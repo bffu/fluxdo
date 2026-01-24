@@ -1,0 +1,31 @@
+/// 429 Rate Limit 异常（重试耗尽后抛出）
+class RateLimitException implements Exception {
+  final int? retryAfterSeconds;
+  RateLimitException([this.retryAfterSeconds]);
+
+  @override
+  String toString() => '请求过于频繁，请稍后再试';
+}
+
+/// 服务器错误异常（502/503/504 重试耗尽后抛出）
+class ServerException implements Exception {
+  final int statusCode;
+  ServerException(this.statusCode);
+
+  @override
+  String toString() => '服务器暂时不可用 ($statusCode)';
+}
+
+/// Cloudflare 验证异常
+class CfChallengeException implements Exception {
+  final bool userCancelled;
+  final bool inCooldown;
+  CfChallengeException({this.userCancelled = false, this.inCooldown = false});
+
+  @override
+  String toString() {
+    if (inCooldown) return '请稍后再试';
+    if (userCancelled) return '验证已取消';
+    return '安全验证失败，请重试';
+  }
+}

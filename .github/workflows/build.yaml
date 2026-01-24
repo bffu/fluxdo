@@ -1,0 +1,251 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  IS_STABLE: ${{ !contains(github.ref, '-') }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android-arm64
+            rust-target: aarch64-linux-android
+            ndk-target: arm64-v8a
+            flutter-target: android-arm64
+            apk-suffix: arm64-v8a
+          - platform: android-arm32
+            rust-target: armv7-linux-androideabi
+            ndk-target: armeabi-v7a
+            flutter-target: android-arm
+            apk-suffix: armeabi-v7a
+          - platform: android-x64
+            rust-target: x86_64-linux-android
+            ndk-target: x86_64
+            flutter-target: android-x64
+            apk-suffix: x86_64
+
+    steps:
+      # 1. 基础设置
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. 环境设置
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # 3. Rust 设置
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.rust-target }}
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Install cmake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;25.2.9519653'
+
+      # 4. Android 签名设置
+      - name: Setup Android Signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_PROPERTIES: ${{ secrets.ANDROID_KEY_PROPERTIES }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+          echo "$KEY_PROPERTIES" > android/key.properties
+
+      # 5. 构建 Rust DOH Proxy (单架构)
+      - name: Build DOH Proxy
+        working-directory: core/doh_proxy
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
+        run: |
+          cargo ndk -t ${{ matrix.ndk-target }} --platform 28 build --release --features ech
+
+      # 6. 复制库文件
+      - name: Copy DOH Proxy library
+        run: |
+          mkdir -p android/app/src/main/jniLibs/${{ matrix.ndk-target }}
+          cp core/doh_proxy/target/${{ matrix.rust-target }}/release/libdoh_proxy.so android/app/src/main/jniLibs/${{ matrix.ndk-target }}/
+
+      - name: Copy CA certificate
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          cp core/doh_proxy/certs/ca.der android/app/src/main/res/raw/proxy_ca.der
+
+      # 7. 构建 Flutter 应用 (单架构)
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Android Release
+        run: flutter build apk --release --target-platform ${{ matrix.flutter-target }}
+
+      # 8. 重命名产物
+      - name: Rename APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/fluxdo-${{ matrix.apk-suffix }}-release.apk
+
+      # 9. 上传产物
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: build/app/outputs/flutter-apk/fluxdo-${{ matrix.apk-suffix }}-release.apk
+
+  changelog:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref, '-') }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/heads/main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Changelog
+        run: |
+          last_ver=$(grep -m1 '^## ' CHANGELOG.md 2>/dev/null | sed 's/^## //' || echo "")
+
+          tags=($(git tag --merged HEAD --sort=-creatordate))
+
+          temp="NEW_CHANGELOG.md"
+          > "$temp"
+
+          for i in "${!tags[@]}"; do
+              curr="${tags[i]}"
+              [[ "$curr" == "$last_ver" ]] && break
+
+              prev="${tags[i+1]}"
+              range="${prev:+$prev..}$curr"
+
+              echo -e "## $curr\n" >> "$temp"
+              git log --no-merges --pretty=format:"%B" "$range" | \
+              awk '!/Update changelog/ && NF {print "- " $0 "\n"}' >> "$temp"
+          done
+
+          [ -f CHANGELOG.md ] && cat CHANGELOG.md >> "$temp"
+          mv "$temp" CHANGELOG.md
+
+      - name: Commit Changelog
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add CHANGELOG.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Update changelog for ${{ github.ref_name }}"
+            git push
+          fi
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: write-all
+    services:
+      telegram-bot-api:
+        image: aiogram/telegram-bot-api:latest
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        ports:
+          - 8081:8081
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        run: |
+          tags=($(git tag --merged HEAD --sort=-creatordate))
+          preTag=$(curl -s "https://api.github.com/repos/lingyan000/fluxdo/releases/latest" | \
+          sed -nE 's/.*"tag_name": "([^"]+)".*/\1/p' || echo "")
+
+          out="release_notes.md"
+          > "$out"
+
+          for i in "${!tags[@]}"; do
+            curr="${tags[i]}"
+            [[ "$curr" == "$preTag" ]] && break
+
+            prev="${tags[i+1]}"
+            range="${prev:+$prev..}$curr"
+
+            git log --no-merges --pretty=format:"%B" "$range" | \
+            awk '!/Update changelog/ && NF {print "- " $0 "\n"}' >> "$out"
+          done
+
+      - name: Send Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          IS_PRERELEASE: ${{ contains(github.ref, '-') }}
+          TELEGRAM_API_BASE: http://localhost:8081
+        if: env.TELEGRAM_BOT_TOKEN
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+          python release_telegram.py
+
+      - name: Append release template
+        run: |
+          sed 's/VERSION/${{ steps.version.outputs.VERSION }}/g' .github/release_template.md >> release_notes.md
+
+      - name: Generate SHA256 checksums
+        if: ${{ !contains(github.ref, '-') }}
+        run: |
+          cd artifacts
+          sha256sum *.apk > SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.apk
+            artifacts/SHA256SUMS.txt
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

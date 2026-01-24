@@ -1,0 +1,30 @@
+import 'package:dio/dio.dart';
+
+import '../../../constants.dart';
+import '../cookie/cookie_sync_service.dart';
+
+/// 请求头拦截器
+/// 负责设置 User-Agent 和 CSRF Token
+class RequestHeaderInterceptor extends Interceptor {
+  RequestHeaderInterceptor(this._cookieSync);
+
+  final CookieSyncService _cookieSync;
+
+  @override
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    // 1. 设置 User-Agent
+    options.headers['User-Agent'] = await AppConstants.getUserAgent();
+
+    // 2. 设置 CSRF Token（无数据时传 "undefined"）
+    final skipCsrf = options.extra['skipCsrf'] == true;
+    if (!skipCsrf) {
+      final csrf = _cookieSync.csrfToken;
+      options.headers['X-CSRF-Token'] = (csrf == null || csrf.isEmpty) ? 'undefined' : csrf;
+    }
+
+    handler.next(options);
+  }
+}
