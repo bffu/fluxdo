@@ -798,7 +798,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       notificationPredicate: (notification) {
         if (!hasFirstPost) return false;
         if (notification.depth != 0) return false;
-        return notification.metrics.pixels <= notification.metrics.minScrollExtent;
+        return true;
       },
       child: scrollView,
     );
