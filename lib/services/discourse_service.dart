@@ -15,6 +15,7 @@ import '../models/search_result.dart';
 import '../models/emoji.dart';
 import '../models/badge.dart';
 import '../models/tag_search_result.dart';
+import '../models/mention_user.dart';
 
 import '../constants.dart';
 import '../providers/message_bus_providers.dart';
@@ -534,6 +535,61 @@ class DiscourseService {
     }
   }
 
+  /// 搜索用户（用于 @提及自动补全）
+  /// [term] 搜索词
+  /// [topicId] 话题 ID（可选，用于优先显示参与者）
+  /// [categoryId] 分类 ID（可选）
+  /// [includeGroups] 是否包含群组（默认 true）
+  /// [limit] 结果数量限制（默认 6）
+  Future<MentionSearchResult> searchUsers({
+    required String term,
+    int? topicId,
+    int? categoryId,
+    bool includeGroups = true,
+    int limit = 6,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'term': term,
+        'include_groups': includeGroups,
+        'limit': limit,
+      };
+      if (topicId != null) {
+        queryParams['topic_id'] = topicId;
+      }
+      if (categoryId != null) {
+        queryParams['category_id'] = categoryId;
+      }
+
+      final response = await _dio.get('/u/search/users', queryParameters: queryParams);
+      return MentionSearchResult.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      print('[DiscourseService] searchUsers failed: $e');
+      return const MentionSearchResult(users: [], groups: []);
+    }
+  }
+
+  /// 验证 @ 提及的用户/群组是否有效
+  /// [names] 用户名/群组名列表
+  /// 返回验证结果，包含有效用户、无效用户、群组等信息
+  Future<MentionCheckResult> checkMentions(List<String> names) async {
+    if (names.isEmpty) {
+      return const MentionCheckResult();
+    }
+    try {
+      final response = await _dio.get(
+        '/composer/mentions',
+        queryParameters: {
+          'names[]': names,
+        },
+      );
+      return MentionCheckResult.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      print('[DiscourseService] checkMentions failed: $e');
+      return const MentionCheckResult();
+    }
+  }
+
   /// 获取可用的回应表情列表（从预加载数据）
   Future<List<String>> getEnabledReactions() async {
     final preloaded = PreloadedDataService();
@@ -1039,8 +1095,8 @@ class DiscourseService {
   /// [topicId] 话题 ID
   /// [raw] 回复内容（Markdown）
   /// [replyToPostNumber] 可选，回复的帖子编号（不填则直接回复话题）
-  /// 返回创建的帖子 ID
-  Future<int> createReply({
+  /// 返回创建的 Post 对象
+  Future<Post> createReply({
     required int topicId,
     required String raw,
     int? replyToPostNumber,
@@ -1050,7 +1106,7 @@ class DiscourseService {
         'topic_id': topicId,
         'raw': raw,
       };
-      
+
       if (replyToPostNumber != null) {
         data['reply_to_post_number'] = replyToPostNumber;
       }
@@ -1062,22 +1118,22 @@ class DiscourseService {
       );
 
       final respData = response.data;
-      
+
       // 情况1: 标准创建响应
-      if (respData is Map && respData.containsKey('post') && respData['post']['id'] != null) {
-        return respData['post']['id'] as int;
+      if (respData is Map && respData.containsKey('post') && respData['post'] != null) {
+        return Post.fromJson(respData['post'] as Map<String, dynamic>);
       }
-      
+
       // 情况2: 直接返回 post 对象
       if (respData is Map && respData['id'] != null) {
-        return respData['id'] as int;
+        return Post.fromJson(respData as Map<String, dynamic>);
       }
-      
+
       // 情况3: 明确失败
       if (respData is Map && respData['success'] == false) {
         throw Exception(respData['errors']?.toString() ?? '回复失败');
       }
-      
+
       throw Exception('未知响应格式');
     } on DioException catch (e) {
       if (e.response?.data != null && e.response!.data is Map) {
@@ -1618,6 +1674,60 @@ class DiscourseService {
     } catch (e) {
       print('[DiscourseService] getTopicVoteWho failed: $e');
       return [];
+    }
+  }
+
+  /// 获取帖子原始内容（Markdown）
+  /// [postId] 帖子 ID
+  /// 返回帖子的 raw 内容
+  Future<String?> getPostRaw(int postId) async {
+    try {
+      final response = await _dio.get('/posts/$postId.json');
+      final data = response.data as Map<String, dynamic>?;
+      return data?['raw'] as String?;
+    } catch (e) {
+      print('[DiscourseService] getPostRaw failed: $e');
+      return null;
+    }
+  }
+
+  /// 更新帖子内容
+  /// [postId] 帖子 ID
+  /// [raw] 新的 Markdown 内容
+  /// [editReason] 编辑理由（可选）
+  /// 返回更新后的 Post 对象，失败返回 null
+  Future<Post?> updatePost({
+    required int postId,
+    required String raw,
+    String? editReason,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'post[raw]': raw,
+      };
+      if (editReason != null && editReason.isNotEmpty) {
+        data['post[edit_reason]'] = editReason;
+      }
+
+      final response = await _dio.put(
+        '/posts/$postId.json',
+        data: data,
+        options: Options(contentType: Headers.formUrlEncodedContentType),
+      );
+
+      final respData = response.data;
+      if (respData is Map && respData['post'] != null) {
+        return Post.fromJson(respData['post'] as Map<String, dynamic>);
+      }
+      return null;
+    } on DioException catch (e) {
+      if (e.response?.data != null && e.response!.data is Map) {
+        final data = e.response!.data as Map;
+        if (data['errors'] != null) {
+          throw Exception((data['errors'] as List).join('\n'));
+        }
+      }
+      rethrow;
     }
   }
 }

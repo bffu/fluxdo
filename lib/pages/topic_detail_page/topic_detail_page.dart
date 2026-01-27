@@ -251,15 +251,60 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   }
 
   Future<void> _handleReply(Post? replyToPost) async {
-    final success = await showReplySheet(
+    final params = TopicDetailParams(widget.topicId, postNumber: _scrollController.currentPostNumber, instanceId: _instanceId);
+    final detail = ref.read(topicDetailProvider(params)).value;
+
+    final newPost = await showReplySheet(
       context: context,
       topicId: widget.topicId,
+      categoryId: detail?.categoryId,
       replyToPost: replyToPost,
     );
 
-    if (success && mounted) {
-      final params = TopicDetailParams(widget.topicId, postNumber: _scrollController.currentPostNumber, instanceId: _instanceId);
-      ref.invalidate(topicDetailProvider(params));
+    if (newPost != null && mounted) {
+      // 添加新帖子，返回是否添加到视图
+      final addedToView = ref.read(topicDetailProvider(params).notifier).addPost(newPost);
+
+      if (addedToView) {
+        // 用户在底部：滚动到新帖子位置并高亮
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _scrollToPost(newPost.postNumber);
+          }
+        });
+      } else {
+        // 用户不在底部：显示 SnackBar 提示，点击可跳转
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('回复已发送'),
+              action: SnackBarAction(
+                label: '查看',
+                onPressed: () => _scrollToPost(newPost.postNumber),
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _handleEdit(Post post) async {
+    final params = TopicDetailParams(widget.topicId, postNumber: _scrollController.currentPostNumber, instanceId: _instanceId);
+    final detail = ref.read(topicDetailProvider(params)).value;
+
+    final updatedPost = await showEditSheet(
+      context: context,
+      topicId: widget.topicId,
+      post: post,
+      categoryId: detail?.categoryId,
+    );
+
+    if (updatedPost != null && mounted) {
+      // 直接更新帖子，不重新请求
+      ref.read(topicDetailProvider(params).notifier).updatePost(updatedPost);
     }
   }
 
@@ -743,6 +788,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       onPostVisibilityChanged: _visibilityTracker.onPostVisibilityChanged,
       onJumpToPost: _scrollToPost,
       onReply: _handleReply,
+      onEdit: _handleEdit,
       onVoteChanged: _handleVoteChanged,
       onScrollNotification: _scrollController.handleScrollNotification,
     );

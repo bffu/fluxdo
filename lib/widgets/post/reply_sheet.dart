@@ -10,39 +10,71 @@ import '../../services/emoji_handler.dart';
 
 /// 显示回复底部弹框
 /// [topicId] 话题 ID (回复话题/帖子时必需)
+/// [categoryId] 分类 ID（可选，用于用户搜索）
 /// [replyToPost] 可选，被回复的帖子
 /// [targetUsername] 可选，私信目标用户名 (创建私信时必需)
-/// 返回 true 表示成功发送
-Future<bool> showReplySheet({
+/// 返回创建的 Post 对象，取消或失败返回 null
+Future<Post?> showReplySheet({
   required BuildContext context,
   int? topicId,
+  int? categoryId,
   Post? replyToPost,
   String? targetUsername,
 }) async {
-  final result = await showModalBottomSheet<bool>(
+  final result = await showModalBottomSheet<Post?>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (context) => ReplySheet(
       topicId: topicId,
+      categoryId: categoryId,
       replyToPost: replyToPost,
       targetUsername: targetUsername,
     ),
   );
-  return result ?? false;
+  return result;
+}
+
+/// 显示编辑帖子底部弹框
+/// [topicId] 话题 ID
+/// [post] 要编辑的帖子
+/// [categoryId] 分类 ID（可选，用于用户搜索）
+/// 返回更新后的 Post 对象，取消或失败返回 null
+Future<Post?> showEditSheet({
+  required BuildContext context,
+  required int topicId,
+  required Post post,
+  int? categoryId,
+}) async {
+  final result = await showModalBottomSheet<Post?>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => ReplySheet(
+      topicId: topicId,
+      categoryId: categoryId,
+      editPost: post,
+    ),
+  );
+  return result;
 }
 
 class ReplySheet extends ConsumerStatefulWidget {
   final int? topicId;
+  final int? categoryId;
   final Post? replyToPost;
   final String? targetUsername;
+  final Post? editPost; // 编辑模式：要编辑的帖子
 
   const ReplySheet({
     super.key,
     this.topicId,
+    this.categoryId,
     this.replyToPost,
     this.targetUsername,
+    this.editPost,
   });
 
   @override
@@ -57,6 +89,7 @@ class _ReplySheetState extends ConsumerState<ReplySheet> {
 
   bool _isSubmitting = false;
   bool _showEmojiPanel = false;
+  bool _isLoadingRaw = false; // 编辑模式：加载原始内容中
 
   // 表情面板高度
   static const double _emojiPanelHeight = 280.0;
@@ -65,22 +98,54 @@ class _ReplySheetState extends ConsumerState<ReplySheet> {
   PresenceService? _presenceService;
 
   bool get _isPrivateMessage => widget.targetUsername != null;
+  bool get _isEditMode => widget.editPost != null;
 
   @override
   void initState() {
     super.initState();
     EmojiHandler().init();
-    
-    // 初始化 Presence 服务（非私信模式）
-    if (!_isPrivateMessage && widget.topicId != null) {
+
+    // 编辑模式：加载帖子原始内容
+    if (_isEditMode) {
+      _loadPostRaw();
+    }
+
+    // 初始化 Presence 服务（非私信模式、非编辑模式）
+    if (!_isPrivateMessage && !_isEditMode && widget.topicId != null) {
       _presenceService = PresenceService(DiscourseService());
       _presenceService!.enterReplyChannel(widget.topicId!);
     }
-    
-    // 自动聚焦
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocusNode.requestFocus();
-    });
+
+    // 自动聚焦（非编辑模式时立即聚焦，编辑模式在加载完成后聚焦）
+    if (!_isEditMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _contentFocusNode.requestFocus();
+      });
+    }
+  }
+
+  /// 加载帖子原始内容
+  Future<void> _loadPostRaw() async {
+    setState(() => _isLoadingRaw = true);
+    try {
+      final raw = await DiscourseService().getPostRaw(widget.editPost!.id);
+      if (mounted && raw != null) {
+        _contentController.text = raw;
+        // 加载完成后聚焦并将光标移到末尾
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _contentFocusNode.requestFocus();
+          _contentController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _contentController.text.length),
+          );
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('加载内容失败: ${e.toString().replaceAll('Exception: ', '')}');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingRaw = false);
+    }
   }
 
   @override
@@ -125,25 +190,35 @@ class _ReplySheetState extends ConsumerState<ReplySheet> {
     setState(() => _isSubmitting = true);
 
     try {
-      if (_isPrivateMessage) {
+      if (_isEditMode) {
+        // 编辑模式：更新帖子
+        final updatedPost = await DiscourseService().updatePost(
+          postId: widget.editPost!.id,
+          raw: content,
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop(updatedPost);
+      } else if (_isPrivateMessage) {
         await DiscourseService().createPrivateMessage(
           targetUsernames: [widget.targetUsername!],
           title: _titleController.text.trim(),
           raw: content,
         );
+        if (!mounted) return;
+        Navigator.of(context).pop(null); // 私信模式不返回 Post
       } else {
-        await DiscourseService().createReply(
+        // 回复模式：返回创建的 Post 对象
+        final newPost = await DiscourseService().createReply(
           topicId: widget.topicId!,
           raw: content,
           replyToPostNumber: widget.replyToPost?.postNumber,
         );
+        if (!mounted) return;
+        Navigator.of(context).pop(newPost);
       }
-
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      _showError('发送失败: ${e.toString().replaceAll('Exception: ', '')}');
+      _showError('${_isEditMode ? '保存' : '发送'}失败: ${e.toString().replaceAll('Exception: ', '')}');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -204,7 +279,21 @@ class _ReplySheetState extends ConsumerState<ReplySheet> {
                         child: Row(
                           children: [
                             // 标题信息
-                            if (_isPrivateMessage)
+                            if (_isEditMode) ...[
+                              Icon(
+                                Icons.edit_outlined,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '编辑帖子 #${widget.editPost!.postNumber}',
+                                  style: theme.textTheme.titleSmall,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ] else if (_isPrivateMessage)
                               Expanded(
                                 child: Text(
                                   '发送私信给 @${widget.targetUsername}',
@@ -239,13 +328,13 @@ class _ReplySheetState extends ConsumerState<ReplySheet> {
                                 '回复话题',
                                 style: theme.textTheme.titleSmall,
                               ),
-                            
-                            if (!_isPrivateMessage && widget.replyToPost == null)
+
+                            if (!_isPrivateMessage && !_isEditMode && widget.replyToPost == null)
                               const Spacer(),
 
-                            // 发送按钮
+                            // 发送/保存按钮
                             FilledButton(
-                              onPressed: _isSubmitting ? null : _submit,
+                              onPressed: (_isSubmitting || _isLoadingRaw) ? null : _submit,
                               child: _isSubmitting
                                   ? const SizedBox(
                                       width: 20,
@@ -255,7 +344,7 @@ class _ReplySheetState extends ConsumerState<ReplySheet> {
                                         color: Colors.white,
                                       ),
                                     )
-                                  : const Text('发送'),
+                                  : Text(_isEditMode ? '保存' : '发送'),
                             ),
                           ],
                         ),
@@ -307,6 +396,12 @@ class _ReplySheetState extends ConsumerState<ReplySheet> {
                       onEmojiPanelChanged: (show) {
                         setState(() => _showEmojiPanel = show);
                       },
+                      mentionDataSource: (term) => DiscourseService().searchUsers(
+                        term: term,
+                        topicId: widget.topicId,
+                        categoryId: widget.categoryId,
+                        includeGroups: !_isPrivateMessage, // 私信不允许提及群组
+                      ),
                     ),
                   ),
 

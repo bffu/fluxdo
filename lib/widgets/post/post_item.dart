@@ -32,6 +32,7 @@ class PostItem extends ConsumerStatefulWidget {
   final int topicId;
   final VoidCallback? onReply;
   final VoidCallback? onLike;
+  final VoidCallback? onEdit; // 编辑回调
   final void Function(int postNumber)? onJumpToPost;
   final void Function(bool isVisible)? onVisibilityChanged;
   final bool highlight;
@@ -42,6 +43,7 @@ class PostItem extends ConsumerStatefulWidget {
     required this.topicId,
     this.onReply,
     this.onLike,
+    this.onEdit,
     this.onJumpToPost,
     this.onVisibilityChanged,
     this.highlight = false,
@@ -509,6 +511,16 @@ class _PostItemState extends ConsumerState<PostItem> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 编辑（仅当有编辑权限时显示）
+              if (widget.post.canEdit && widget.onEdit != null)
+                ListTile(
+                  leading: Icon(Icons.edit_outlined, color: theme.colorScheme.primary),
+                  title: Text('编辑', style: TextStyle(color: theme.colorScheme.primary)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    widget.onEdit!();
+                  },
+                ),
               // 分享
               ListTile(
                 leading: Icon(Icons.share_outlined, color: theme.colorScheme.onSurface),

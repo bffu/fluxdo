@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/emoji_handler.dart';
+import '../mention/mention_autocomplete.dart';
 import 'markdown_renderer.dart';
 import 'markdown_toolbar.dart';
 
@@ -28,6 +29,9 @@ class MarkdownEditor extends StatefulWidget {
   /// 表情面板状态变化回调
   final ValueChanged<bool>? onEmojiPanelChanged;
 
+  /// 用户提及数据源（可选，不传则不启用 @用户 功能）
+  final MentionDataSource? mentionDataSource;
+
   const MarkdownEditor({
     super.key,
     required this.controller,
@@ -37,6 +41,7 @@ class MarkdownEditor extends StatefulWidget {
     this.expands = false,
     this.emojiPanelHeight = 280.0,
     this.onEmojiPanelChanged,
+    this.mentionDataSource,
   });
 
   @override
@@ -215,6 +220,38 @@ class MarkdownEditorState extends State<MarkdownEditor> {
   /// 当前是否显示表情面板
   bool get showEmojiPanel => _toolbarKey.currentState?.showEmojiPanel ?? false;
 
+  /// 构建文本编辑器（可选包含 @提及自动补全）
+  Widget _buildTextEditor() {
+    final textField = TextField(
+      controller: widget.controller,
+      focusNode: _focusNode,
+      maxLines: null,
+      minLines: widget.expands ? null : widget.minLines,
+      expands: widget.expands,
+      textAlignVertical: TextAlignVertical.top,
+      keyboardType: TextInputType.multiline,
+      decoration: InputDecoration(
+        hintText: widget.hintText,
+        border: InputBorder.none,
+      ),
+      onTap: () {
+        _toolbarKey.currentState?.closeEmojiPanel();
+      },
+    );
+
+    // 如果提供了 mentionDataSource，则包裹 MentionAutocomplete
+    if (widget.mentionDataSource != null) {
+      return MentionAutocomplete(
+        controller: widget.controller,
+        focusNode: _focusNode,
+        dataSource: widget.mentionDataSource!,
+        child: textField,
+      );
+    }
+
+    return textField;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -235,22 +272,7 @@ class MarkdownEditorState extends State<MarkdownEditor> {
                 )
               : Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    maxLines: null,
-                    minLines: widget.expands ? null : widget.minLines,
-                    expands: widget.expands,
-                    textAlignVertical: TextAlignVertical.top,
-                    keyboardType: TextInputType.multiline,
-                    decoration: InputDecoration(
-                      hintText: widget.hintText,
-                      border: InputBorder.none,
-                    ),
-                    onTap: () {
-                      _toolbarKey.currentState?.closeEmojiPanel();
-                    },
-                  ),
+                  child: _buildTextEditor(),
                 ),
         ),
         

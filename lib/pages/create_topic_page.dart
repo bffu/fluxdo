@@ -14,6 +14,7 @@ import 'package:fluxdo/widgets/markdown_editor/markdown_renderer.dart';
 import 'package:fluxdo/services/emoji_handler.dart';
 import 'package:fluxdo/widgets/topic/topic_filter_sheet.dart';
 import 'package:fluxdo/services/preloaded_data_service.dart';
+import 'package:fluxdo/widgets/mention/mention_autocomplete.dart';
 import '../constants.dart';
 
 class CreateTopicPage extends ConsumerStatefulWidget {
@@ -690,29 +691,38 @@ class _CreateTopicPageState extends ConsumerState<CreateTopicPage> {
                             const SizedBox(height: 20),
       
                             // 内容区域 & 字符计数
-                            TextFormField(
+                            MentionAutocomplete(
                               controller: _contentController,
                               focusNode: _contentFocusNode,
-                              maxLines: null,
-                              minLines: 12,
-                              decoration: InputDecoration(
-                                hintText: '正文内容 (支持 Markdown)...',
-                                border: InputBorder.none,
-                                helperText: _templateContent != null ? '已填充分类模板' : null,
-                                contentPadding: EdgeInsets.zero,
+                              dataSource: (term) => ref.read(discourseServiceProvider).searchUsers(
+                                term: term,
+                                categoryId: _selectedCategory?.id,
+                                includeGroups: true,
                               ),
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                height: 1.6,
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                              child: TextFormField(
+                                controller: _contentController,
+                                focusNode: _contentFocusNode,
+                                maxLines: null,
+                                minLines: 12,
+                                decoration: InputDecoration(
+                                  hintText: '正文内容 (支持 Markdown)...',
+                                  border: InputBorder.none,
+                                  helperText: _templateContent != null ? '已填充分类模板' : null,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  height: 1.6,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                                ),
+                                validator: (value) {
+                                   if (value == null || value.trim().isEmpty) return '请输入内容';
+                                   if (value.trim().length < 10) return '内容至少需要 10 个字符';
+                                   return null;
+                                },
+                                onTap: () {
+                                   _toolbarKey.currentState?.closeEmojiPanel();
+                                },
                               ),
-                              validator: (value) {
-                                 if (value == null || value.trim().isEmpty) return '请输入内容';
-                                 if (value.trim().length < 10) return '内容至少需要 10 个字符';
-                                 return null;
-                              },
-                              onTap: () {
-                                 _toolbarKey.currentState?.closeEmojiPanel();
-                              },
                             ),
                             const SizedBox(height: 40),
                             Align(

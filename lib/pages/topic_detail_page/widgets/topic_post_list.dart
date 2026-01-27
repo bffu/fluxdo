@@ -26,6 +26,7 @@ class TopicPostList extends StatelessWidget {
   final void Function(int postNumber, bool isVisible) onPostVisibilityChanged;
   final void Function(int postNumber) onJumpToPost;
   final void Function(Post? replyToPost) onReply;
+  final void Function(Post post) onEdit; // 编辑回调
   final VoidCallback onVoteChanged;
   final bool Function(ScrollNotification) onScrollNotification;
 
@@ -47,6 +48,7 @@ class TopicPostList extends StatelessWidget {
     required this.onPostVisibilityChanged,
     required this.onJumpToPost,
     required this.onReply,
+    required this.onEdit,
     required this.onVoteChanged,
     required this.onScrollNotification,
   });
@@ -109,6 +111,7 @@ class TopicPostList extends StatelessWidget {
                       const SnackBar(content: Text('点赞功能开发中...')),
                     ),
                     onReply: isLoggedIn ? () => onReply(post) : null,
+                    onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
                     onJumpToPost: onJumpToPost,
                     onVisibilityChanged: (isVisible) =>
                         onPostVisibilityChanged(post.postNumber, isVisible),
@@ -187,6 +190,7 @@ class TopicPostList extends StatelessWidget {
                           const SnackBar(content: Text('点赞功能开发中...')),
                         ),
                         onReply: isLoggedIn ? () => onReply(post) : null,
+                        onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
                         onJumpToPost: onJumpToPost,
                         onVisibilityChanged: (isVisible) =>
                             onPostVisibilityChanged(post.postNumber, isVisible),

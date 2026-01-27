@@ -637,6 +637,110 @@ class TopicDetailNotifier extends AsyncNotifier<TopicDetail> {
       return -1;
     }
   }
+
+  /// 添加新创建的帖子到列表（用于回复后直接更新）
+  /// 返回 true 表示帖子已添加到视图，false 表示只更新了 stream
+  bool addPost(Post post) {
+    final currentDetail = state.value;
+    if (currentDetail == null) return false;
+
+    final currentPosts = currentDetail.postStream.posts;
+
+    // 检查是否已存在
+    if (currentPosts.any((p) => p.id == post.id)) return true;
+
+    // 更新 stream（始终添加）
+    final newStream = [...currentDetail.postStream.stream];
+    if (!newStream.contains(post.id)) {
+      newStream.add(post.id);
+    }
+
+    // 只有在用户已加载到底部时才添加到视图
+    if (!_hasMoreAfter) {
+      // 添加新帖子并排序
+      final newPosts = [...currentPosts, post];
+      newPosts.sort((a, b) => a.postNumber.compareTo(b.postNumber));
+
+      // 更新帖子总数
+      final newPostsCount = currentDetail.postsCount + 1;
+
+      state = AsyncValue.data(TopicDetail(
+        id: currentDetail.id,
+        title: currentDetail.title,
+        slug: currentDetail.slug,
+        postsCount: newPostsCount,
+        postStream: PostStream(posts: newPosts, stream: newStream),
+        categoryId: currentDetail.categoryId,
+        closed: currentDetail.closed,
+        archived: currentDetail.archived,
+        tags: currentDetail.tags,
+        views: currentDetail.views,
+        likeCount: currentDetail.likeCount,
+        createdAt: currentDetail.createdAt,
+        visible: currentDetail.visible,
+        canVote: currentDetail.canVote,
+        voteCount: currentDetail.voteCount,
+        userVoted: currentDetail.userVoted,
+        lastReadPostNumber: currentDetail.lastReadPostNumber,
+      ));
+      return true;
+    } else {
+      // 用户不在底部：只更新 stream 和帖子总数，不添加到视图
+      state = AsyncValue.data(TopicDetail(
+        id: currentDetail.id,
+        title: currentDetail.title,
+        slug: currentDetail.slug,
+        postsCount: currentDetail.postsCount + 1,
+        postStream: PostStream(posts: currentPosts, stream: newStream),
+        categoryId: currentDetail.categoryId,
+        closed: currentDetail.closed,
+        archived: currentDetail.archived,
+        tags: currentDetail.tags,
+        views: currentDetail.views,
+        likeCount: currentDetail.likeCount,
+        createdAt: currentDetail.createdAt,
+        visible: currentDetail.visible,
+        canVote: currentDetail.canVote,
+        voteCount: currentDetail.voteCount,
+        userVoted: currentDetail.userVoted,
+        lastReadPostNumber: currentDetail.lastReadPostNumber,
+      ));
+      return false;
+    }
+  }
+
+  /// 更新已存在的帖子（用于编辑后直接更新）
+  void updatePost(Post post) {
+    final currentDetail = state.value;
+    if (currentDetail == null) return;
+
+    final currentPosts = currentDetail.postStream.posts;
+    final index = currentPosts.indexWhere((p) => p.id == post.id);
+    if (index == -1) return;
+
+    final newPosts = [...currentPosts];
+    newPosts[index] = post;
+
+    state = AsyncValue.data(TopicDetail(
+      id: currentDetail.id,
+      title: currentDetail.title,
+      slug: currentDetail.slug,
+      postsCount: currentDetail.postsCount,
+      postStream: PostStream(posts: newPosts, stream: currentDetail.postStream.stream),
+      categoryId: currentDetail.categoryId,
+      closed: currentDetail.closed,
+      archived: currentDetail.archived,
+      tags: currentDetail.tags,
+      views: currentDetail.views,
+      likeCount: currentDetail.likeCount,
+      createdAt: currentDetail.createdAt,
+      visible: currentDetail.visible,
+      canVote: currentDetail.canVote,
+      voteCount: currentDetail.voteCount,
+      userVoted: currentDetail.userVoted,
+      lastReadPostNumber: currentDetail.lastReadPostNumber,
+    ));
+  }
 }
 
 final topicDetailProvider = AsyncNotifierProvider.family.autoDispose<TopicDetailNotifier, TopicDetail, TopicDetailParams>(
