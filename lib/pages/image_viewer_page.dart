@@ -5,6 +5,7 @@ import 'package:gal/gal.dart';
 import '../services/discourse_cache_manager.dart';
 import '../utils/double_tap_zoom_controller.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
 import '../widgets/common/loading_spinner.dart';
 
 class ImageViewerPage extends StatefulWidget {
@@ -81,6 +82,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   late int currentIndex;
   bool _isSaving = false;
   bool _isSharing = false;
+  bool _showUI = true;
   final DiscourseCacheManager _cacheManager = DiscourseCacheManager();
 
   @override
@@ -95,8 +97,36 @@ class _ImageViewerPageState extends State<ImageViewerPage>
 
   @override
   void dispose() {
+    _restoreSystemUI();
     disposeDoubleTapZoom();
     super.dispose();
+  }
+
+  void _toggleUI() {
+    setState(() {
+      _showUI = !_showUI;
+    });
+    _updateSystemUI();
+  }
+
+  void _hideUI() {
+    if (!_showUI) return;
+    setState(() {
+      _showUI = false;
+    });
+    _updateSystemUI();
+  }
+
+  void _updateSystemUI() {
+    if (_showUI) {
+      _restoreSystemUI();
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+    }
+  }
+
+  void _restoreSystemUI() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   /// 预加载相邻图片
@@ -250,41 +280,58 @@ class _ImageViewerPageState extends State<ImageViewerPage>
         slideType: SlideType.onlyImage,
         slidePageBackgroundHandler: (Offset offset, Size pageSize) {
           double progress = offset.distance / (pageSize.height);
-          return Colors.black.withOpacity((1.0 - progress).clamp(0.0, 1.0));
+          return Colors.black.withValues(alpha: (1.0 - progress).clamp(0.0, 1.0));
         },
         child: Scaffold(
           backgroundColor: Colors.transparent,
           body: Stack(
             children: [
-              ExtendedImage.memory(
-                widget.imageBytes!,
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.contain,
-                mode: ExtendedImageMode.gesture,
-                enableSlideOutPage: true,
-                initGestureConfigHandler: (state) => GestureConfig(
-                  minScale: 0.9, animationMinScale: 0.7, maxScale: 5.0, animationMaxScale: 5.5,
-                  speed: 1.0, inertialSpeed: 500.0, initialScale: 1.0, inPageView: false,
-                ),
-                onDoubleTap: (state) => handleDoubleTapZoom(state),
-              ),
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 10,
-                right: 20,
-                child: CircleAvatar(
-                  backgroundColor: Colors.black.withValues(alpha: 0.5),
-                  child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.of(context).pop()),
+              GestureDetector(
+                onTap: _toggleUI,
+                child: ExtendedImage.memory(
+                  widget.imageBytes!,
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.contain,
+                  mode: ExtendedImageMode.gesture,
+                  enableSlideOutPage: true,
+                  initGestureConfigHandler: (state) => GestureConfig(
+                    minScale: 0.9, animationMinScale: 0.7, maxScale: 5.0, animationMaxScale: 5.5,
+                    speed: 1.0, inertialSpeed: 500.0, initialScale: 1.0, inPageView: false,
+                  ),
+                  onDoubleTap: (state) {
+                    _hideUI();
+                    handleDoubleTapZoom(state);
+                  },
                 ),
               ),
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 10,
-                left: 20,
-                child: CircleAvatar(
-                  backgroundColor: Colors.black.withValues(alpha: 0.5),
-                  child: _isSaving
-                      ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
-                      : IconButton(icon: const Icon(Icons.save_alt, color: Colors.white), onPressed: _saveMemoryImage),
+              IgnorePointer(
+                ignoring: !_showUI,
+                child: AnimatedOpacity(
+                  opacity: _showUI ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 10,
+                        right: 20,
+                        child: CircleAvatar(
+                          backgroundColor: Colors.black.withValues(alpha: 0.5),
+                          child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.of(context).pop()),
+                        ),
+                      ),
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 10,
+                        left: 20,
+                        child: CircleAvatar(
+                          backgroundColor: Colors.black.withValues(alpha: 0.5),
+                          child: _isSaving
+                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
+                              : IconButton(icon: const Icon(Icons.save_alt, color: Colors.white), onPressed: _saveMemoryImage),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -310,191 +357,214 @@ class _ImageViewerPageState extends State<ImageViewerPage>
           children: [
             if (!isGallery)
               // 单图模式：使用最简结构，避免 PageView 带来的空白/手势问题
-              ExtendedImage(
-                image: discourseImageProvider(widget.imageUrl!),
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.contain,
-                mode: ExtendedImageMode.gesture,
-                enableSlideOutPage: true,
-                heroBuilderForSlidingPage: widget.heroTag != null
-                    ? (child) => Hero(tag: widget.heroTag!, child: child)
-                    : null,
-                initGestureConfigHandler: (state) {
-                  return GestureConfig(
-                    minScale: 0.9,
-                    animationMinScale: 0.7,
-                    maxScale: 4.0,
-                    animationMaxScale: 4.5,
-                    speed: 1.0,
-                    inertialSpeed: 500.0,
-                    initialScale: 1.0,
-                    inPageView: false,
-                    initialAlignment: InitialAlignment.center,
-                  );
-                },
-                onDoubleTap: (state) => handleDoubleTapZoom(state, imageUrl: widget.imageUrl),
-                loadStateChanged: (state) {
-                  // 缓存图片尺寸用于智能缩放
-                  if (state.extendedImageLoadState == LoadState.completed) {
-                    final imageInfo = state.extendedImageInfo;
-                    if (imageInfo != null && widget.imageUrl != null) {
-                      cacheImageSize(widget.imageUrl!, Size(
-                        imageInfo.image.width.toDouble(),
-                        imageInfo.image.height.toDouble(),
-                      ));
+              GestureDetector(
+                onTap: _toggleUI,
+                child: ExtendedImage(
+                  image: discourseImageProvider(widget.imageUrl!),
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.contain,
+                  mode: ExtendedImageMode.gesture,
+                  enableSlideOutPage: true,
+                  heroBuilderForSlidingPage: widget.heroTag != null
+                      ? (child) => Hero(tag: widget.heroTag!, child: child)
+                      : null,
+                  initGestureConfigHandler: (state) {
+                    return GestureConfig(
+                      minScale: 0.9,
+                      animationMinScale: 0.7,
+                      maxScale: 4.0,
+                      animationMaxScale: 4.5,
+                      speed: 1.0,
+                      inertialSpeed: 500.0,
+                      initialScale: 1.0,
+                      inPageView: false,
+                      initialAlignment: InitialAlignment.center,
+                    );
+                  },
+                  onDoubleTap: (state) {
+                    _hideUI();
+                    handleDoubleTapZoom(state, imageUrl: widget.imageUrl);
+                  },
+                  loadStateChanged: (state) {
+                    // 缓存图片尺寸用于智能缩放
+                    if (state.extendedImageLoadState == LoadState.completed) {
+                      final imageInfo = state.extendedImageInfo;
+                      if (imageInfo != null && widget.imageUrl != null) {
+                        cacheImageSize(widget.imageUrl!, Size(
+                          imageInfo.image.width.toDouble(),
+                          imageInfo.image.height.toDouble(),
+                        ));
+                      }
                     }
-                  }
-                  return null;
-                },
+                    return null;
+                  },
+                ),
               )
             else
               // 画廊模式：使用 ExtendedImageGesturePageView 支持滑动切换
-              ExtendedImageGesturePageView.builder(
-                itemCount: images.length,
-                physics: const BouncingScrollPhysics(),
-                controller: ExtendedPageController(
-                  initialPage: widget.initialIndex,
-                  pageSpacing: 50,
-                ),
-                onPageChanged: (index) {
-                  setState(() {
-                    currentIndex = index;
-                  });
-                  // 预加载相邻图片
-                  _preloadAdjacentImages();
-                },
-                itemBuilder: (context, index) {
-                  final url = images[index];
-                  // 仅当当前显示的图片是初始进入的图片时，才使用 Hero 动画
-                  // 因为其他图片在列表中的 Hero Tag 是未知的 (UniqueKey)
-                  final shouldUseHero = index == widget.initialIndex && widget.heroTag != null;
-
-                  return ExtendedImage(
-                    image: discourseImageProvider(url),
-                    mode: ExtendedImageMode.gesture,
-                    enableSlideOutPage: true,
-                    heroBuilderForSlidingPage: shouldUseHero
-                        ? (child) => Hero(tag: widget.heroTag!, child: child)
-                        : null,
-                    initGestureConfigHandler: (state) {
-                      return GestureConfig(
-                        minScale: 0.9,
-                        animationMinScale: 0.7,
-                        maxScale: 4.0,
-                        animationMaxScale: 4.5,
-                        speed: 1.0,
-                        inertialSpeed: 500.0,
-                        initialScale: 1.0,
-                        inPageView: true, // 必须为 true
-                        initialAlignment: InitialAlignment.center,
-                      );
-                    },
-                    onDoubleTap: (state) => handleDoubleTapZoom(state, imageUrl: url),
-                    loadStateChanged: (state) {
-                      if (state.extendedImageLoadState == LoadState.loading) {
-                        return const Center(child: LoadingSpinner());
-                      }
-                      // 缓存图片尺寸用于智能缩放
-                      if (state.extendedImageLoadState == LoadState.completed) {
-                        final imageInfo = state.extendedImageInfo;
-                        if (imageInfo != null) {
-                          cacheImageSize(url, Size(
-                            imageInfo.image.width.toDouble(),
-                            imageInfo.image.height.toDouble(),
-                          ));
-                        }
-                      }
-                      return null;
-                    },
-                  );
-                },
-              ),
-
-            // 顶部指示器 (仅画廊模式)
-            if (isGallery)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 15,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      "${currentIndex + 1} / ${images.length}",
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                    ),
+              GestureDetector(
+                onTap: _toggleUI,
+                child: ExtendedImageGesturePageView.builder(
+                  itemCount: images.length,
+                  physics: const BouncingScrollPhysics(),
+                  controller: ExtendedPageController(
+                    initialPage: widget.initialIndex,
+                    pageSpacing: 50,
                   ),
+                  onPageChanged: (index) {
+                    setState(() {
+                      currentIndex = index;
+                    });
+                    // 预加载相邻图片
+                    _preloadAdjacentImages();
+                  },
+                  itemBuilder: (context, index) {
+                    final url = images[index];
+                    // 仅当当前显示的图片是初始进入的图片时，才使用 Hero 动画
+                    // 因为其他图片在列表中的 Hero Tag 是未知的 (UniqueKey)
+                    final shouldUseHero = index == widget.initialIndex && widget.heroTag != null;
+  
+                    return ExtendedImage(
+                      image: discourseImageProvider(url),
+                      mode: ExtendedImageMode.gesture,
+                      enableSlideOutPage: true,
+                      heroBuilderForSlidingPage: shouldUseHero
+                          ? (child) => Hero(tag: widget.heroTag!, child: child)
+                          : null,
+                      initGestureConfigHandler: (state) {
+                        return GestureConfig(
+                          minScale: 0.9,
+                          animationMinScale: 0.7,
+                          maxScale: 4.0,
+                          animationMaxScale: 4.5,
+                          speed: 1.0,
+                          inertialSpeed: 500.0,
+                          initialScale: 1.0,
+                          inPageView: true, // 必须为 true
+                          initialAlignment: InitialAlignment.center,
+                        );
+                      },
+                      onDoubleTap: (state) {
+                        _hideUI();
+                        handleDoubleTapZoom(state, imageUrl: url);
+                      },
+                      loadStateChanged: (state) {
+                        if (state.extendedImageLoadState == LoadState.loading) {
+                          return const Center(child: LoadingSpinner());
+                        }
+                        // 缓存图片尺寸用于智能缩放
+                        if (state.extendedImageLoadState == LoadState.completed) {
+                          final imageInfo = state.extendedImageInfo;
+                          if (imageInfo != null) {
+                            cacheImageSize(url, Size(
+                              imageInfo.image.width.toDouble(),
+                              imageInfo.image.height.toDouble(),
+                            ));
+                          }
+                        }
+                        return null;
+                      },
+                    );
+                  },
                 ),
               ),
 
-            // Close button
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              right: 20,
-              child: CircleAvatar(
-                backgroundColor: Colors.black.withValues(alpha: 0.5),
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ),
-
-            // Save button
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              left: 20,
-              child: CircleAvatar(
-                backgroundColor: Colors.black.withValues(alpha: 0.5),
-                child: _isSaving
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.save_alt, color: Colors.white),
-                        onPressed: _saveCurrentImage,
-                      ),
-              ),
-            ),
-
-            // Share button
-            if (widget.enableShare)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 10,
-                left: 70, // 保存按钮右侧 (20 + 40 + 10)
-                child: CircleAvatar(
-                  backgroundColor: Colors.black.withValues(alpha: 0.5),
-                  child: _isSharing
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+            IgnorePointer(
+              ignoring: !_showUI,
+              child: AnimatedOpacity(
+                opacity: _showUI ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Stack(
+                  children: [
+                    // 顶部指示器 (仅画廊模式)
+                    if (isGallery)
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 15,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              "${currentIndex + 1} / ${images.length}",
+                              style: const TextStyle(color: Colors.white, fontSize: 14),
                             ),
                           ),
-                        )
-                      : IconButton(
-                          icon: const Icon(Icons.share, color: Colors.white),
-                          onPressed: _shareImage,
                         ),
+                      ),
+
+                    // Close button
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 10,
+                      right: 20,
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black.withValues(alpha: 0.5),
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                    ),
+
+                    // Save button
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 10,
+                      left: 20,
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black.withValues(alpha: 0.5),
+                        child: _isSaving
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.save_alt, color: Colors.white),
+                                onPressed: _saveCurrentImage,
+                              ),
+                      ),
+                    ),
+
+                    // Share button
+                    if (widget.enableShare)
+                      Positioned(
+                        top: MediaQuery.of(context).padding.top + 10,
+                        left: 70, // 保存按钮右侧 (20 + 40 + 10)
+                        child: CircleAvatar(
+                          backgroundColor: Colors.black.withValues(alpha: 0.5),
+                          child: _isSharing
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: const Icon(Icons.share, color: Colors.white),
+                                  onPressed: _shareImage,
+                                ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
+            ),
           ],
         ),
       ),
