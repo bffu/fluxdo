@@ -37,6 +37,8 @@ dependencies:
   markdown: ^7.2.2
   image_picker: ^1.2.1
   gal: ^2.3.2
+  pangutext:
+    path: packages/pangutext
   flutter_local_notifications: ^19.5.0
   flutter_svg: ^2.2.3
   html: ^0.15.5

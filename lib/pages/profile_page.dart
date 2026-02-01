@@ -14,6 +14,7 @@ import 'user_profile_page.dart';
 import 'trust_level_requirements_page.dart';
 import 'about_page.dart';
 import 'network_settings_page.dart';
+import 'preferences_page.dart';
 import '../widgets/common/loading_spinner.dart';
 import '../widgets/common/loading_dialog.dart';
 import '../widgets/common/notification_icon_button.dart';
@@ -362,6 +363,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             iconColor: Colors.blueGrey,
             title: '网络设置',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NetworkSettingsPage())),
+          ),
+          _buildOptionTile(
+            icon: Icons.tune_rounded,
+            iconColor: Colors.deepPurple,
+            title: '偏好设置',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PreferencesPage())),
           ),
           _buildOptionTile(
             icon: Icons.info_rounded,

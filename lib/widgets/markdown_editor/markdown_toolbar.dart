@@ -24,6 +24,12 @@ class MarkdownToolbar extends StatefulWidget {
   
   /// 预览切换回调
   final VoidCallback? onTogglePreview;
+
+  /// 混排优化按钮回调
+  final VoidCallback? onApplyPangu;
+
+  /// 是否显示混排优化按钮
+  final bool showPanguButton;
   
   /// 表情面板高度
   final double emojiPanelHeight;
@@ -35,6 +41,8 @@ class MarkdownToolbar extends StatefulWidget {
     this.showPreviewButton = true,
     this.isPreview = false,
     this.onTogglePreview,
+    this.onApplyPangu,
+    this.showPanguButton = false,
     this.emojiPanelHeight = 280.0,
   });
 
@@ -558,7 +566,17 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
                   color: theme.colorScheme.outlineVariant,
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                 ),
-                // 预览按钮
+                if (widget.showPanguButton)
+                  IconButton(
+                    icon: Icon(
+                      Icons.auto_fix_high_rounded,
+                      size: 20,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: widget.onApplyPangu,
+                    tooltip: '混排优化',
+                  ),
+                // 预览按钮（放到最后）
                 if (widget.showPreviewButton)
                   IconButton(
                     icon: Icon(
