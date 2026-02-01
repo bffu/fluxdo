@@ -265,6 +265,49 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
     widget.focusNode?.requestFocus();
   }
 
+  /// 插入删除线（带占位符并自动选中）
+  void insertStrikethrough() {
+    final selection = widget.controller.selection;
+    final text = widget.controller.text;
+
+    if (!selection.isValid || selection.start == selection.end) {
+      // 没有选中文本，插入带占位符的删除线
+      const placeholder = '删除线文本';
+      final strikethrough = '~~$placeholder~~';
+      final insertPos = selection.isValid ? selection.start : text.length;
+      final newText = text.replaceRange(insertPos, insertPos, strikethrough);
+
+      // 选中占位符
+      widget.controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: insertPos + 2, // 2 = '~~'.length
+          extentOffset: insertPos + 2 + placeholder.length,
+        ),
+      );
+    } else {
+      // 有选中文本，用删除线包裹
+      final selectedText = selection.textInside(text);
+      final strikethrough = '~~$selectedText~~';
+      final newText = text.replaceRange(
+        selection.start,
+        selection.end,
+        strikethrough,
+      );
+
+      // 选中删除线内容
+      widget.controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: selection.start + 2,
+          extentOffset: selection.start + 2 + selectedText.length,
+        ),
+      );
+    }
+
+    widget.focusNode?.requestFocus();
+  }
+
   /// 插入行内代码（带占位符并自动选中）
   void insertInlineCode() {
     final selection = widget.controller.selection;
@@ -471,6 +514,10 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
                         _ToolbarButton(
                           icon: FontAwesomeIcons.italic,
                           onPressed: () => wrapSelection('*', '*'),
+                        ),
+                        _ToolbarButton(
+                          icon: FontAwesomeIcons.strikethrough,
+                          onPressed: insertStrikethrough,
                         ),
                         _ToolbarButton(
                           icon: FontAwesomeIcons.listUl,
