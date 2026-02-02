@@ -10,36 +10,37 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: android-arm64
+          - platform: android
+            os: ubuntu-latest
+            arch: arm64-v8a
             rust-target: aarch64-linux-android
-            ndk-target: arm64-v8a
             flutter-target: android-arm64
-            apk-suffix: arm64-v8a
-          - platform: android-arm32
+          - platform: android
+            os: ubuntu-latest
+            arch: armeabi-v7a
             rust-target: armv7-linux-androideabi
-            ndk-target: armeabi-v7a
             flutter-target: android-arm
-            apk-suffix: armeabi-v7a
-          - platform: android-x64
+          - platform: android
+            os: ubuntu-latest
+            arch: x86_64
             rust-target: x86_64-linux-android
-            ndk-target: x86_64
             flutter-target: android-x64
-            apk-suffix: x86_64
+          - platform: ios
+            os: macos-latest
 
     steps:
-      # 1. 基础设置
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # 2. 环境设置
       - name: Setup Java
+        if: startsWith(matrix.platform, 'android')
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -50,70 +51,71 @@ jobs:
         with:
           channel: stable
 
-      # 3. Rust 设置
       - name: Setup Rust
+        if: startsWith(matrix.platform, 'android')
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.rust-target }}
-
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk
-
-      - name: Install cmake
-        run: sudo apt-get update && sudo apt-get install -y cmake
+      - name: Setup Android build environment
+        if: startsWith(matrix.platform, 'android')
+        run: |
+          rustup target add ${{ matrix.rust-target }}
+          cargo install cargo-ndk
+          sudo apt-get update && sudo apt-get install -y cmake
 
       - name: Setup Android NDK
+        if: startsWith(matrix.platform, 'android')
         uses: android-actions/setup-android@v3
         with:
           packages: 'ndk;25.2.9519653'
 
-      # 4. Android 签名设置
       - name: Setup Android Signing
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEY_PROPERTIES: ${{ secrets.ANDROID_KEY_PROPERTIES }}
+        if: startsWith(matrix.platform, 'android')
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
-          echo "$KEY_PROPERTIES" > android/key.properties
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/upload-keystore.jks
+          echo "${{ secrets.ANDROID_KEY_PROPERTIES }}" > android/key.properties
 
-      # 5. 构建 Rust DOH Proxy (单架构)
       - name: Build DOH Proxy
+        if: startsWith(matrix.platform, 'android')
         working-directory: core/doh_proxy
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
-        run: |
-          cargo ndk -t ${{ matrix.ndk-target }} --platform 28 build --release --features ech
+        run: cargo ndk -t ${{ matrix.arch }} --platform 28 build --release --features ech
 
-      # 6. 复制库文件
-      - name: Copy DOH Proxy library
+      - name: Copy native libraries
+        if: startsWith(matrix.platform, 'android')
         run: |
-          mkdir -p android/app/src/main/jniLibs/${{ matrix.ndk-target }}
-          cp core/doh_proxy/target/${{ matrix.rust-target }}/release/libdoh_proxy.so android/app/src/main/jniLibs/${{ matrix.ndk-target }}/
-
-      - name: Copy CA certificate
-        run: |
+          mkdir -p android/app/src/main/jniLibs/${{ matrix.arch }}
+          cp core/doh_proxy/target/${{ matrix.rust-target }}/release/libdoh_proxy.so android/app/src/main/jniLibs/${{ matrix.arch }}/
           mkdir -p android/app/src/main/res/raw
           cp core/doh_proxy/certs/ca.der android/app/src/main/res/raw/proxy_ca.der
 
-      # 7. 构建 Flutter 应用 (单架构)
-      - name: Install Flutter dependencies
+      - name: Get dependencies
         run: flutter pub get
 
-      - name: Build Android Release
-        run: flutter build apk --release --target-platform ${{ matrix.flutter-target }} --dart-define=cronetHttpNoPlay=true
-
-      # 8. 重命名产物
-      - name: Rename APK
+      - name: Build Android
+        if: startsWith(matrix.platform, 'android')
         run: |
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/fluxdo-${{ matrix.apk-suffix }}-release.apk
+          flutter build apk --release --target-platform ${{ matrix.flutter-target }} --dart-define=cronetHttpNoPlay=true
+          mkdir -p dist
+          mv build/app/outputs/flutter-apk/app-release.apk dist/fluxdo-${{ matrix.arch }}.apk
 
-      # 9. 上传产物
+      - name: Build iOS
+        if: matrix.platform == 'ios'
+        run: |
+          flutter build ios --release --no-codesign
+          mkdir -p dist
+          cd build/ios/iphoneos
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -r fluxdo-unsigned.ipa Payload
+          mv fluxdo-unsigned.ipa ../../../dist/
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}
-          path: build/app/outputs/flutter-apk/fluxdo-${{ matrix.apk-suffix }}-release.apk
+          name: artifact-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) }}
+          path: ./dist
+          overwrite: true
 
   changelog:
     needs: build
@@ -194,11 +196,12 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: ./dist/
+          pattern: artifact-*
           merge-multiple: true
 
       - name: List artifacts
-        run: ls -la artifacts/
+        run: ls -la ./dist/
 
       - name: Get version from tag
         id: version
@@ -267,19 +270,20 @@ jobs:
           sed 's/VERSION/${{ steps.version.outputs.VERSION }}/g' .github/release_template.md >> release_notes.md
 
       - name: Generate SHA256 checksums
-        if: ${{ !contains(github.ref, '-') }}
+        if: env.IS_STABLE == 'true'
         run: |
-          cd artifacts
-          sha256sum *.apk > SHA256SUMS.txt
+          cd ./dist
+          for file in $(find . -type f -not -name "*.sha256"); do
+            sha256sum "$file" > "${file}.sha256"
+          done
 
       - name: Create Release
+        if: env.IS_STABLE == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/*.apk
-            artifacts/SHA256SUMS.txt
+          files: ./dist/*
           body_path: release_notes.md
           draft: false
-          prerelease: ${{ contains(github.ref, '-') }}
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
