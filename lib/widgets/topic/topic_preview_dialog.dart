@@ -287,7 +287,7 @@ class TopicPreviewDialog extends ConsumerWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              '# $tag',
+              '# ${tag.name}',
               style: theme.textTheme.labelMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

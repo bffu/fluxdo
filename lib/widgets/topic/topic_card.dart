@@ -254,7 +254,7 @@ class TopicCard extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            '# $tag',
+                            '# ${tag.name}',
                             style: theme.textTheme.labelSmall?.copyWith(
                               fontSize: 10,
                               color: theme.colorScheme.onSurfaceVariant,
