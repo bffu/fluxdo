@@ -35,6 +35,9 @@ final scrollToTopProvider = StateNotifierProvider<ScrollToTopNotifier, int>((ref
 /// 底栏可见性状态（滚动时自动隐藏）
 final bottomNavVisibleProvider = StateProvider<bool>((ref) => true);
 
+/// 顶栏可见性状态（滚动时自动隐藏）
+final topBarVisibleProvider = StateProvider<bool>((ref) => true);
+
 /// 帖子列表页面 - 支持多 Tab (最新、新、未读、排行榜、热门)
 class TopicsPage extends ConsumerStatefulWidget {
   const TopicsPage({super.key});
@@ -45,7 +48,6 @@ class TopicsPage extends ConsumerStatefulWidget {
 
 class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStateMixin {
   late TabController _tabController;
-  bool _showSearchBar = true;
   List<TopicListFilter> _filters = [];
   final Map<TopicListFilter, GlobalKey<_TopicListState>> _listKeys = {};
   int _currentTabIndex = 0;
@@ -79,11 +81,12 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
   }
 
   void _onScrollDirectionChanged(ScrollDirection direction) {
-    if (direction == ScrollDirection.forward && !_showSearchBar) {
-      setState(() => _showSearchBar = true);
+    final isVisible = ref.read(topBarVisibleProvider);
+    if (direction == ScrollDirection.forward && !isVisible) {
+      ref.read(topBarVisibleProvider.notifier).state = true;
       ref.read(bottomNavVisibleProvider.notifier).state = true;
-    } else if (direction == ScrollDirection.reverse && _showSearchBar) {
-      setState(() => _showSearchBar = false);
+    } else if (direction == ScrollDirection.reverse && isVisible) {
+      ref.read(topBarVisibleProvider.notifier).state = false;
       ref.read(bottomNavVisibleProvider.notifier).state = false;
     }
   }
@@ -210,6 +213,7 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     final isLoggedIn = ref.watch(currentUserProvider).value != null;
     _syncTabsIfNeeded(isLoggedIn);
     final titles = _buildTitles(_filters);
+    final showSearchBar = ref.watch(topBarVisibleProvider);
 
     // 监听滚动到顶部的通知
     ref.listen(scrollToTopProvider, (previous, next) {
@@ -223,12 +227,12 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOutCubic,
-          height: _showSearchBar ? topPadding + 56 : topPadding,
+          height: showSearchBar ? topPadding + 56 : topPadding,
           child: Container(
             color: Theme.of(context).scaffoldBackgroundColor,
             padding: EdgeInsets.only(top: topPadding + 8, left: 16, right: 16, bottom: 8),
             child: AnimatedOpacity(
-              opacity: _showSearchBar ? 1 : 0,
+              opacity: showSearchBar ? 1 : 0,
               duration: const Duration(milliseconds: 200),
               child: Row(
                 children: [
@@ -281,25 +285,31 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
             ),
           ),
         ),
-        // TabBar：固定显示
-        Container(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          child: Row(
-            children: [
-              Expanded(
-                child: TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  tabs: titles.map((t) => Tab(text: t)).toList(),
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
-                  dividerColor: Colors.transparent,
+        // TabBar：固定显示，点击时恢复顶栏和底栏
+        GestureDetector(
+          onTap: () {
+            ref.read(topBarVisibleProvider.notifier).state = true;
+            ref.read(bottomNavVisibleProvider.notifier).state = true;
+          },
+          child: Container(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    tabs: titles.map((t) => Tab(text: t)).toList(),
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+                    dividerColor: Colors.transparent,
+                  ),
                 ),
-              ),
-              // 筛选按钮
-              _FilterButton(),
-            ],
+                // 筛选按钮
+                _FilterButton(),
+              ],
+            ),
           ),
         ),
         // 当前筛选条件
