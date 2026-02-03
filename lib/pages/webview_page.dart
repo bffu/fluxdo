@@ -45,7 +45,7 @@ class _WebViewPageState extends State<WebViewPage> {
     super.initState();
     _currentUrl = widget.url;
     _currentTitle = widget.title ?? '';
-    _cookieSyncFuture = _syncCookiesIfNeeded(widget.url);
+    _cookieSyncFuture = _syncCookiesBeforeOpen();
   }
 
   @override
@@ -53,20 +53,23 @@ class _WebViewPageState extends State<WebViewPage> {
     final theme = Theme.of(context);
 
     return PopScope(
-      canPop: !_canGoBack,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (_canGoBack) {
-          await _controller?.goBack();
-        }
+        await _handleBackNavigation();
       },
       child: Scaffold(
         appBar: AppBar(
           title: Text(_currentTitle.isEmpty ? '浏览器' : _currentTitle),
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            onPressed: _handleBackNavigation,
+            tooltip: '关闭',
+          ),
           actions: [
             IconButton(
               icon: Icon(
-                Icons.arrow_back,
+                Icons.chevron_left_rounded,
                 color: _canGoBack ? null : theme.disabledColor,
               ),
               onPressed: _canGoBack ? () => _controller?.goBack() : null,
@@ -74,7 +77,7 @@ class _WebViewPageState extends State<WebViewPage> {
             ),
             IconButton(
               icon: Icon(
-                Icons.arrow_forward,
+                Icons.chevron_right_rounded,
                 color: _canGoForward ? null : theme.disabledColor,
               ),
               onPressed: _canGoForward ? () => _controller?.goForward() : null,
@@ -172,10 +175,8 @@ class _WebViewPageState extends State<WebViewPage> {
     );
   }
 
-  Future<void> _syncCookiesIfNeeded(String url) async {
-    if (_shouldSyncCookiesForUrl(url)) {
-      await CookieJarService().syncToWebView();
-    }
+  Future<void> _syncCookiesBeforeOpen() async {
+    await CookieJarService().syncToWebView();
   }
 
   bool _shouldSyncCookiesForUrl(String url) {
@@ -197,6 +198,20 @@ class _WebViewPageState extends State<WebViewPage> {
         _openInExternalBrowser();
         break;
     }
+  }
+
+  Future<void> _handleBackNavigation() async {
+    final controller = _controller;
+    if (controller == null) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    final canGoBack = await controller.canGoBack();
+    if (canGoBack) {
+      await controller.goBack();
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _copyUrl() async {

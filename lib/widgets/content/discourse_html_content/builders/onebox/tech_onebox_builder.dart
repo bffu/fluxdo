@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../../../utils/link_launcher.dart';
 import 'onebox_base.dart';
 
 /// 技术平台 Onebox 构建器
@@ -57,7 +57,7 @@ class TechOneboxBuilder {
     final isStackOverflow = url.contains('stackoverflow.com');
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -221,7 +221,7 @@ class TechOneboxBuilder {
     final time = timeElement?.text?.trim() ?? '';
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -352,7 +352,7 @@ class TechOneboxBuilder {
         border: Border.all(color: borderColor),
       ),
       child: InkWell(
-        onTap: () => _launchUrl(url),
+        onTap: () => _launchUrl(context, url),
         borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -521,10 +521,8 @@ class _StatBox extends StatelessWidget {
 
 // ============== 辅助函数 ==============
 
-Future<void> _launchUrl(String url) async {
+Future<void> _launchUrl(BuildContext context, String url) async {
   if (url.isEmpty) return;
-  final uri = Uri.parse(url);
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  await launchExternalLink(context, url);
 }
+

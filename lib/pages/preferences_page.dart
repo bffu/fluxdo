@@ -46,6 +46,23 @@ class PreferencesPage extends ConsumerWidget {
                 ),
                 Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withValues(alpha:0.3)),
                 SwitchListTile(
+                  title: const Text('外部链接使用内置浏览器'),
+                  subtitle: const Text('贴内外部链接优先在应用内打开'),
+                  secondary: Icon(
+                    Icons.open_in_browser_rounded,
+                    color: preferences.openExternalLinksInAppBrowser
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  value: preferences.openExternalLinksInAppBrowser,
+                  onChanged: (value) {
+                    ref
+                        .read(preferencesProvider.notifier)
+                        .setOpenExternalLinksInAppBrowser(value);
+                  },
+                ),
+                Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withValues(alpha:0.3)),
+                SwitchListTile(
                   title: const Text('匿名分享'),
                   subtitle: const Text('分享链接时不附带个人用户标识'),
                   secondary: Icon(

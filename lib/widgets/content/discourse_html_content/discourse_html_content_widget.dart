@@ -11,6 +11,7 @@ import '../../../providers/preferences_provider.dart';
 import '../../../services/discourse/discourse_service.dart';
 import '../../../services/emoji_handler.dart';
 import '../../../utils/url_helper.dart';
+import '../../../utils/link_launcher.dart';
 import 'discourse_widget_factory.dart';
 import 'builders/quote_card_builder.dart';
 import 'builders/onebox_card_builder.dart';
@@ -353,10 +354,7 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
         }
 
         // 6. 外部链接：在浏览器中打开
-        final uri = Uri.tryParse(url);
-        if (uri != null && await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
+        await launchExternalLink(context, url);
         return true;
       },
     );

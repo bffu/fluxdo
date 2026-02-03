@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../../../utils/link_launcher.dart';
 import '../../../../../services/discourse_cache_manager.dart';
 import 'onebox_base.dart';
 
@@ -48,7 +48,7 @@ class VideoOneboxBuilder {
 
     return OneboxContainer(
       padding: EdgeInsets.zero,
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -229,7 +229,7 @@ class VideoOneboxBuilder {
 
     return OneboxContainer(
       padding: EdgeInsets.zero,
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -383,7 +383,7 @@ class VideoOneboxBuilder {
 
     return OneboxContainer(
       padding: EdgeInsets.zero,
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -524,10 +524,8 @@ String? _extractYoutubeVideoId(String url) {
   return null;
 }
 
-Future<void> _launchUrl(String url) async {
+Future<void> _launchUrl(BuildContext context, String url) async {
   if (url.isEmpty) return;
-  final uri = Uri.parse(url);
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  await launchExternalLink(context, url);
 }
+

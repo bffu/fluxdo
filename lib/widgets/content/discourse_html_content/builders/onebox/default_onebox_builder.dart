@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../../../utils/link_launcher.dart';
 import 'onebox_base.dart';
 
 /// 构建默认链接预览卡片
@@ -39,10 +39,7 @@ Widget buildDefaultOnebox({
   return OneboxContainer(
     onTap: () async {
       if (url.isNotEmpty) {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
+        await launchExternalLink(context, url);
       }
     },
     child: Column(

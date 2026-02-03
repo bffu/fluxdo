@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../../../services/highlighter_service.dart';
+import '../../../../../utils/link_launcher.dart';
 import 'onebox_base.dart';
 
 /// GitHub Onebox 构建器
@@ -42,7 +42,7 @@ class GithubOneboxBuilder {
     final language = languageElement?.text?.trim() ?? '';
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -189,7 +189,7 @@ class GithubOneboxBuilder {
           border: Border.all(color: borderColor),
         ),
         child: InkWell(
-          onTap: () => _launchUrl(url),
+          onTap: () => _launchUrl(context, url),
           borderRadius: BorderRadius.circular(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -351,7 +351,7 @@ class GithubOneboxBuilder {
     final description = descElement?.text?.trim() ?? '';
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -479,7 +479,7 @@ class GithubOneboxBuilder {
     final comments = commentElement?.text?.trim();
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -608,7 +608,7 @@ class GithubOneboxBuilder {
     final date = dateElement?.text?.trim() ?? '';
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -754,7 +754,7 @@ class GithubOneboxBuilder {
     final avatarUrl = avatarElement?.attributes['src'] ?? '';
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -865,7 +865,7 @@ class GithubOneboxBuilder {
         border: Border.all(color: borderColor),
       ),
       child: InkWell(
-        onTap: () => _launchUrl(url),
+        onTap: () => _launchUrl(context, url),
         borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -969,7 +969,7 @@ class GithubOneboxBuilder {
     }
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1099,7 +1099,7 @@ class GithubOneboxBuilder {
     }
 
     return OneboxContainer(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1285,10 +1285,8 @@ Color _getLanguageColor(String language) {
   return colors[language.toLowerCase()] ?? const Color(0xFF8b8b8b);
 }
 
-Future<void> _launchUrl(String url) async {
+Future<void> _launchUrl(BuildContext context, String url) async {
   if (url.isEmpty) return;
-  final uri = Uri.parse(url);
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  await launchExternalLink(context, url);
 }
+
