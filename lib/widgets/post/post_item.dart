@@ -1091,12 +1091,13 @@ class _PostItemState extends ConsumerState<PostItem> {
                       mentionedUsers: post.mentionedUsers,
                       post: post,
                       topicId: widget.topicId,
-                      onInternalLinkTap: (topicId, topicSlug) {
+                      onInternalLinkTap: (topicId, topicSlug, postNumber) {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => TopicDetailPage(
                               topicId: topicId,
                               initialTitle: topicSlug,
+                              scrollToPostNumber: postNumber,
                             ),
                           ),
                         );

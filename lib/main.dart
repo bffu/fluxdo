@@ -21,6 +21,7 @@ import 'services/network/doh_proxy/proxy_certificate.dart';
 import 'services/cf_challenge_logger.dart';
 import 'services/update_service.dart';
 import 'services/update_checker_helper.dart';
+import 'services/deep_link_service.dart';
 import 'models/user.dart';
 import 'constants.dart';
 
@@ -170,6 +171,9 @@ class _MainPageState extends ConsumerState<MainPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       DiscourseService().setNavigatorContext(context);
       PreloadedDataService().setNavigatorContext(context);
+
+      // 初始化 Deep Link 服务
+      DeepLinkService.instance.initialize(context);
 
       // 自动检查更新
       _autoCheckUpdate();

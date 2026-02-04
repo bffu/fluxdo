@@ -45,5 +45,22 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Custom URL Scheme -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.fluxdo.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fluxdo</string>
+			</array>
+		</dict>
+	</array>
+	<!-- 启用 UIScene lifecycle（app_links 需要） -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 </dict>
 </plist>

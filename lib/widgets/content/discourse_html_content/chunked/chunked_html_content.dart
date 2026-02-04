@@ -13,7 +13,7 @@ class ChunkedHtmlContent extends StatefulWidget {
   final TextStyle? textStyle;
 
   /// 内部链接点击回调 (linux.do 话题链接)
-  final void Function(int topicId, String? topicSlug)? onInternalLinkTap;
+  final void Function(int topicId, String? topicSlug, int? postNumber)? onInternalLinkTap;
 
   /// 链接点击统计数据
   final List<LinkCount>? linkCounts;
@@ -191,7 +191,7 @@ class _ChunkedHtmlContentState extends State<ChunkedHtmlContent> {
 class _ChunkWidget extends StatelessWidget {
   final HtmlChunk chunk;
   final TextStyle? textStyle;
-  final void Function(int topicId, String? topicSlug)? onInternalLinkTap;
+  final void Function(int topicId, String? topicSlug, int? postNumber)? onInternalLinkTap;
   final List<LinkCount>? linkCounts;
   final List<String> galleryImages;
   final List<MentionedUser>? mentionedUsers;

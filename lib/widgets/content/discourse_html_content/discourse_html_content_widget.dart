@@ -32,7 +32,7 @@ class DiscourseHtmlContent extends ConsumerStatefulWidget {
   final TextStyle? textStyle;
   final bool compact; // 紧凑模式：移除段落边距
   /// 内部链接点击回调 (linux.do 话题链接)
-  final void Function(int topicId, String? topicSlug)? onInternalLinkTap;
+  final void Function(int topicId, String? topicSlug, int? postNumber)? onInternalLinkTap;
   /// 链接点击统计数据
   final List<LinkCount>? linkCounts;
   /// 外部传入的画廊图片列表（用于分块渲染时共享完整画廊）
@@ -286,16 +286,17 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
         }
 
         // 2. 解析 linux.do 内部话题链接
-        // 支持格式: https://linux.do/t/topic/123, /t/topic/123 或 https://linux.do/t/some-slug/123
-        final topicMatch = RegExp(r'(?:linux\.do)?/t/(?:[^/]+/)?(\d+)').firstMatch(url);
+        // 支持格式: https://linux.do/t/topic/123, /t/topic/123, https://linux.do/t/some-slug/123/5
+        final topicMatch = RegExp(r'(?:linux\.do)?/t/(?:[^/]+/)?(\d+)(?:/(\d+))?').firstMatch(url);
         if (topicMatch != null && widget.onInternalLinkTap != null) {
           final topicId = int.parse(topicMatch.group(1)!);
+          final postNumber = int.tryParse(topicMatch.group(2) ?? '');
           // 尝试提取 slug (如果有的话)
           final slugMatch = RegExp(r'(?:linux\.do)?/t/([^/]+)/\d+').firstMatch(url);
           final slug = (slugMatch != null && slugMatch.group(1) != 'topic')
               ? slugMatch.group(1)
               : null;
-          widget.onInternalLinkTap!(topicId, slug);
+          widget.onInternalLinkTap!(topicId, slug, postNumber);
           return true;
         }
 
@@ -618,14 +619,15 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
           }
 
           // 处理话题链接
-          final topicMatch = RegExp(r'(?:linux\.do)?/t/(?:[^/]+/)?(\d+)').firstMatch(href);
+          final topicMatch = RegExp(r'(?:linux\.do)?/t/(?:[^/]+/)?(\d+)(?:/(\d+))?').firstMatch(href);
           if (topicMatch != null && widget.onInternalLinkTap != null) {
             final topicId = int.parse(topicMatch.group(1)!);
+            final postNumber = int.tryParse(topicMatch.group(2) ?? '');
             final slugMatch = RegExp(r'(?:linux\.do)?/t/([^/]+)/\d+').firstMatch(href);
             final slug = (slugMatch != null && slugMatch.group(1) != 'topic')
                 ? slugMatch.group(1)
                 : null;
-            widget.onInternalLinkTap!(topicId, slug);
+            widget.onInternalLinkTap!(topicId, slug, postNumber);
             return;
           }
 

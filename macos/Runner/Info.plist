@@ -28,5 +28,22 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- Custom URL Scheme -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.fluxdo.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fluxdo</string>
+			</array>
+		</dict>
+	</array>
+	<!-- 禁用 Flutter 默认 deep link 处理，使用 app_links -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 </dict>
 </plist>

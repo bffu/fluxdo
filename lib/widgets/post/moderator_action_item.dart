@@ -143,12 +143,13 @@ class ModeratorActionItem extends ConsumerWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
             linkCounts: post.linkCounts,
-            onInternalLinkTap: (topicId, topicSlug) {
+            onInternalLinkTap: (topicId, topicSlug, postNumber) {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => TopicDetailPage(
                     topicId: topicId,
                     initialTitle: topicSlug,
+                    scrollToPostNumber: postNumber,
                   ),
                 ),
               );
