@@ -1,7 +1,10 @@
 package com.github.lingyan000.fluxdo
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.net.Uri
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -30,44 +33,55 @@ class MainActivity : FlutterActivity() {
 
     private fun openInExternalBrowser(url: String): Boolean {
         return try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            intent.addCategory(Intent.CATEGORY_BROWSABLE)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            // 使用一个通用的 HTTPS URL 来查询默认浏览器
+            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+            browserIntent.addCategory(Intent.CATEGORY_BROWSABLE)
 
-            // 获取所有能处理这个 Intent 的应用
-            val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
-
-            // 过滤掉自己的应用
-            val filteredList = resolveInfoList.filter {
-                it.activityInfo.packageName != packageName
+            // 获取默认浏览器
+            val defaultBrowser: ResolveInfo? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.resolveActivity(
+                    browserIntent,
+                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.resolveActivity(browserIntent, PackageManager.MATCH_DEFAULT_ONLY)
             }
 
-            if (filteredList.isNotEmpty()) {
-                // 如果只有一个浏览器，直接打开
-                if (filteredList.size == 1) {
-                    intent.setPackage(filteredList[0].activityInfo.packageName)
-                    startActivity(intent)
-                } else {
-                    // 多个浏览器时，创建选择器但排除自己
-                    val chooserIntent = Intent.createChooser(intent, null)
+            val targetIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            targetIntent.addCategory(Intent.CATEGORY_BROWSABLE)
+            targetIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
 
-                    // 使用 EXTRA_EXCLUDE_COMPONENTS 排除自己（API 24+）
-                    val excludeComponents = resolveInfoList
-                        .filter { it.activityInfo.packageName == packageName }
-                        .map { android.content.ComponentName(it.activityInfo.packageName, it.activityInfo.name) }
-                        .toTypedArray()
-
-                    if (excludeComponents.isNotEmpty()) {
-                        chooserIntent.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, excludeComponents)
-                    }
-
-                    startActivity(chooserIntent)
-                }
+            if (defaultBrowser != null && defaultBrowser.activityInfo.packageName != packageName) {
+                // 使用默认浏览器打开
+                targetIntent.setPackage(defaultBrowser.activityInfo.packageName)
+                startActivity(targetIntent)
                 true
             } else {
-                // 没有可用的浏览器，回退到默认行为
-                startActivity(intent)
-                true
+                // 默认浏览器是自己或未找到，查找其他浏览器
+                val resolveInfoList: List<ResolveInfo> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.queryIntentActivities(
+                        browserIntent,
+                        PackageManager.ResolveInfoFlags.of(0)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.queryIntentActivities(browserIntent, 0)
+                }
+
+                val otherBrowsers = resolveInfoList.filter {
+                    it.activityInfo.packageName != packageName
+                }
+
+                if (otherBrowsers.isNotEmpty()) {
+                    // 使用第一个可用的浏览器
+                    targetIntent.setPackage(otherBrowsers[0].activityInfo.packageName)
+                    startActivity(targetIntent)
+                    true
+                } else {
+                    // 没有其他浏览器，无法打开
+                    false
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
