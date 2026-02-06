@@ -5,6 +5,7 @@ import '../pages/topic_detail_page/topic_detail_page.dart';
 import '../pages/user_profile_page.dart';
 import '../pages/webview_page.dart';
 import '../constants.dart';
+import 'discourse/discourse_service.dart';
 
 /// Deep Link 服务
 /// 处理从外部链接打开应用的场景
@@ -22,12 +23,29 @@ class DeepLinkService {
   Uri? _lastHandledUri;
   DateTime? _lastHandledTime;
 
-  /// 话题链接正则
+  /// 话题链接正则（带 ID）
   /// 支持格式：
-  /// - https://linux.do/t/topic-slug/123
-  /// - https://linux.do/t/topic-slug/123/5 (指定楼层)
-  static final _topicRegex = RegExp(
+  /// - /t/topic-slug/123
+  /// - /t/topic-slug/123/5 (指定帖子编号)
+  /// - /t/topic/123 (topic 是固定占位符)
+  static final _topicWithIdRegex = RegExp(
     r'/t/([^/]+)/(\d+)(?:/(\d+))?',
+    caseSensitive: false,
+  );
+
+  /// 话题链接正则（直接 ID）
+  /// 支持格式：
+  /// - /t/123 (直接跟 ID，没有 slug)
+  static final _topicIdOnlyRegex = RegExp(
+    r'/t/(\d+)(?:/(\d+))?(?:[/?#]|$)',
+    caseSensitive: false,
+  );
+
+  /// 话题链接正则（只有 slug）
+  /// 支持格式：
+  /// - /t/topic-slug (只有 slug，需要通过 API 查询)
+  static final _topicSlugOnlyRegex = RegExp(
+    r'/t/([^/\d][^/?#]*)$',
     caseSensitive: false,
   );
 
@@ -96,7 +114,7 @@ class DeepLinkService {
 
     debugPrint('DeepLinkService: 收到链接 $url');
 
-    // 尝试匹配用户链接
+    // 尝试匹配用户链接 /u/username
     final userMatch = _userRegex.firstMatch(uri.path);
     if (userMatch != null) {
       final username = userMatch.group(1);
@@ -110,11 +128,11 @@ class DeepLinkService {
       }
     }
 
-    // 尝试匹配话题链接
-    final topicMatch = _topicRegex.firstMatch(uri.path);
-    if (topicMatch != null) {
-      final topicId = int.tryParse(topicMatch.group(2) ?? '');
-      final postNumber = int.tryParse(topicMatch.group(3) ?? '');
+    // 尝试匹配话题链接（直接 ID）：/t/123 或 /t/123/5
+    final topicIdOnlyMatch = _topicIdOnlyRegex.firstMatch(uri.path);
+    if (topicIdOnlyMatch != null) {
+      final topicId = int.tryParse(topicIdOnlyMatch.group(1) ?? '');
+      final postNumber = int.tryParse(topicIdOnlyMatch.group(2) ?? '');
 
       if (topicId != null) {
         Navigator.of(context).push(
@@ -125,6 +143,36 @@ class DeepLinkService {
             ),
           ),
         );
+        return;
+      }
+    }
+
+    // 尝试匹配话题链接（带 ID）：/t/topic-slug/123 或 /t/topic-slug/123/5
+    final topicWithIdMatch = _topicWithIdRegex.firstMatch(uri.path);
+    if (topicWithIdMatch != null) {
+      final topicId = int.tryParse(topicWithIdMatch.group(2) ?? '');
+      final postNumber = int.tryParse(topicWithIdMatch.group(3) ?? '');
+
+      if (topicId != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TopicDetailPage(
+              topicId: topicId,
+              scrollToPostNumber: postNumber,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    // 尝试匹配话题链接（只有 slug）：/t/topic-slug
+    final topicSlugMatch = _topicSlugOnlyRegex.firstMatch(uri.path);
+    if (topicSlugMatch != null) {
+      final slug = topicSlugMatch.group(1);
+      if (slug != null) {
+        // 通过 slug 获取话题详情，提取真实的 topic ID
+        _handleTopicBySlug(context, slug);
         return;
       }
     }
@@ -191,6 +239,32 @@ class DeepLinkService {
         // 未知路径，打开网页版
         final webUrl = '${AppConstants.baseUrl}/${pathSegments.join('/')}';
         WebViewPage.open(context, webUrl);
+    }
+  }
+
+  /// 通过 slug 获取话题并打开
+  Future<void> _handleTopicBySlug(BuildContext context, String slug) async {
+    try {
+      debugPrint('DeepLinkService: 通过 slug 获取话题: $slug');
+      final service = DiscourseService();
+      final detail = await service.getTopicDetailBySlug(slug);
+
+      if (context.mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TopicDetailPage(
+              topicId: detail.id,
+              initialTitle: detail.title,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('DeepLinkService: 通过 slug 获取话题失败: $e');
+      // 失败时使用 WebView 打开
+      if (context.mounted) {
+        WebViewPage.open(context, '${AppConstants.baseUrl}/t/$slug');
+      }
     }
   }
 

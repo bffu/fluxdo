@@ -104,6 +104,20 @@ mixin _TopicsMixin on _DiscourseServiceBase {
     return TopicDetail.fromJson(response.data);
   }
 
+  /// 通过 slug 获取话题详情（返回真实的 topic ID）
+  Future<TopicDetail> getTopicDetailBySlug(String slug, {int? postNumber, bool trackVisit = false}) async {
+    final path = postNumber != null ? '/t/$slug/$postNumber.json' : '/t/$slug.json';
+    final queryParams = <String, dynamic>{};
+    if (trackVisit) {
+      queryParams['track_visit'] = true;
+    }
+    final response = await _dio.get(
+      path,
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
+    );
+    return TopicDetail.fromJson(response.data);
+  }
+
   /// 批量获取帖子内容
   Future<PostStream> getPosts(int topicId, List<int> postIds) async {
     final response = await _dio.get(
