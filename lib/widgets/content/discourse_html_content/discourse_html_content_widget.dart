@@ -25,6 +25,8 @@ import 'builders/poll_builder.dart';
 import 'builders/math_builder.dart';
 import 'builders/chat_transcript_builder.dart';
 import 'builders/iframe_builder.dart';
+import 'builders/mention_builder.dart';
+import 'builders/inline_code_builder.dart';
 
 /// Discourse HTML 内容渲染 Widget
 /// 封装了所有自定义渲染逻辑
@@ -235,39 +237,12 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
         if (widget.compact && element.localName == 'p') {
           return {'margin': '0'};
         }
-        // 用户提及链接样式 (class="mention")
-        if (element.localName == 'a' && element.classes.contains('mention')) {
-          final isDark = theme.brightness == Brightness.dark;
-          final bgColor = isDark ? '3a3d47' : 'e8ebef';
-          return {
-            'color': '#$linkColor',
-            'text-decoration': 'none',
-            'background-color': '#$bgColor',
-            'padding': '2px 6px',
-            'border-radius': '8px',
-            'font-size': '0.93em',
-            'font-weight': 'normal',
-          };
-        }
+        // 用户提及和内联代码已通过 customWidgetBuilder 渲染
         // 优化链接样式
         if (element.localName == 'a') {
           return {
             'color': '#$linkColor',
             'text-decoration': 'none',
-          };
-        }
-        // 内联代码样式
-        if (element.localName == 'code' && element.parent?.localName != 'pre') {
-          final isDark = theme.brightness == Brightness.dark;
-          final bgColor = isDark ? '3a3a3a' : 'e8e8e8';
-          final textColor = isDark ? 'b0b0b0' : '666666';
-          return {
-            'background-color': '#$bgColor',
-            'color': '#$textColor',
-            'padding': '2px 6px',
-            'border-radius': '4px',
-            'font-family': 'monospace',
-            'font-size': '0.9em',
           };
         }
         return {};
@@ -355,6 +330,25 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
         element.classes.contains('d-icon') ||
         element.localName == 'svg') {
       return const SizedBox.shrink();
+    }
+
+    // 处理用户提及链接 (a.mention)
+    if (element.localName == 'a' && element.classes.contains('mention')) {
+      return buildMention(
+        context: context,
+        theme: theme,
+        element: element,
+        baseFontSize: widget.textStyle?.fontSize ?? 14.0,
+      );
+    }
+
+    // 处理内联代码
+    if (element.localName == 'code' && element.parent?.localName != 'pre') {
+      return buildInlineCode(
+        theme: theme,
+        element: element,
+        baseFontSize: widget.textStyle?.fontSize ?? 14.0,
+      );
     }
 
     // HTML 构建器：用于嵌套渲染
