@@ -1,5 +1,40 @@
 part of 'discourse_service.dart';
 
+/// 图片上传结果
+class UploadResult {
+  final String shortUrl;
+  final String? url;
+  final String originalFilename;
+  final int? width;
+  final int? height;
+  final int? thumbnailWidth;
+  final int? thumbnailHeight;
+
+  UploadResult({
+    required this.shortUrl,
+    this.url,
+    required this.originalFilename,
+    this.width,
+    this.height,
+    this.thumbnailWidth,
+    this.thumbnailHeight,
+  });
+
+  /// 生成 Discourse 格式的 Markdown 图片语法
+  /// 格式: ![alt|widthxheight](url)
+  String toMarkdown({String? alt}) {
+    final displayAlt = alt ?? originalFilename;
+    // 优先使用缩略图尺寸，否则使用原图尺寸
+    final w = thumbnailWidth ?? width;
+    final h = thumbnailHeight ?? height;
+    
+    if (w != null && h != null) {
+      return '![$displayAlt|${w}x$h]($shortUrl)';
+    }
+    return '![$displayAlt]($shortUrl)';
+  }
+}
+
 /// 上传相关
 mixin _UploadsMixin on _DiscourseServiceBase {
   /// 获取图片请求头
@@ -100,7 +135,7 @@ mixin _UploadsMixin on _DiscourseServiceBase {
   }
 
   /// 上传图片
-  Future<String> uploadImage(String filePath) async {
+  Future<UploadResult> uploadImage(String filePath) async {
     try {
       final fileName = filePath.split('/').last;
 
@@ -118,11 +153,30 @@ mixin _UploadsMixin on _DiscourseServiceBase {
 
       final data = response.data;
       if (data is Map) {
-        if (data['short_url'] != null) {
-          return data['short_url'];
+        final shortUrl = data['short_url'] as String?;
+        if (shortUrl != null) {
+          return UploadResult(
+            shortUrl: shortUrl,
+            url: data['url'] as String?,
+            originalFilename: data['original_filename'] as String? ?? fileName,
+            width: data['width'] as int?,
+            height: data['height'] as int?,
+            thumbnailWidth: data['thumbnail_width'] as int?,
+            thumbnailHeight: data['thumbnail_height'] as int?,
+          );
         }
-        if (data['url'] != null) {
-          return data['url'];
+        // 兜底：使用完整 URL
+        final url = data['url'] as String?;
+        if (url != null) {
+          return UploadResult(
+            shortUrl: url,
+            url: url,
+            originalFilename: data['original_filename'] as String? ?? fileName,
+            width: data['width'] as int?,
+            height: data['height'] as int?,
+            thumbnailWidth: data['thumbnail_width'] as int?,
+            thumbnailHeight: data['thumbnail_height'] as int?,
+          );
         }
       }
 

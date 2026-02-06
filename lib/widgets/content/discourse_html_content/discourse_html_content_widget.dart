@@ -27,6 +27,7 @@ import 'builders/chat_transcript_builder.dart';
 import 'builders/iframe_builder.dart';
 import 'builders/mention_builder.dart';
 import 'builders/inline_code_builder.dart';
+import 'builders/image_grid_builder.dart';
 
 /// Discourse HTML 内容渲染 Widget
 /// 封装了所有自定义渲染逻辑
@@ -114,6 +115,9 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
 
       // 排除 favicon 路径
       if (src.contains('/favicon') || src.contains('favicon.')) continue;
+
+      // 排除 upload:// 短链接（这些会在渲染时动态解析）
+      if (src.startsWith('upload://')) continue;
 
       // 将相对路径转换为绝对路径
       if (src.startsWith('/') && !src.startsWith('//')) {
@@ -400,6 +404,16 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
         );
       }
       return const SizedBox.shrink();
+    }
+
+    // 处理 Discourse 图片网格 (div.d-image-grid)
+    if (element.localName == 'div' && element.classes.contains('d-image-grid')) {
+      return buildImageGrid(
+        context: context,
+        theme: theme,
+        element: element,
+        galleryImages: _galleryImages,
+      );
     }
 
     // 处理 table：自定义渲染避免布局问题

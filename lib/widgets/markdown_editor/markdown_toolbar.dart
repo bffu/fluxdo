@@ -359,6 +359,125 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
     widget.focusNode?.requestFocus();
   }
 
+  /// 将选中的图片包裹为网格
+  /// 如果没有选中，则查找光标附近的连续图片
+  void wrapImagesInGrid() {
+    final text = widget.controller.text;
+    final selection = widget.controller.selection;
+    if (!selection.isValid) return;
+
+    // 图片 markdown 正则：![alt](url) 或 ![alt](url "title")
+    final imageRegex = RegExp(r'!\[[^\]]*\]\([^)]+\)');
+
+    // 如果有选中文本，检查是否包含图片
+    if (selection.start != selection.end) {
+      final selectedText = text.substring(selection.start, selection.end);
+      final images = imageRegex.allMatches(selectedText).toList();
+
+      if (images.length >= 2) {
+        // 选中区域包含多张图片，直接包裹
+        final wrappedText = '[grid]\n$selectedText\n[/grid]';
+        final newText = text.replaceRange(selection.start, selection.end, wrappedText);
+
+        widget.controller.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection.collapsed(offset: selection.start + wrappedText.length),
+        );
+        widget.focusNode?.requestFocus();
+        return;
+      }
+    }
+
+    // 没有选中或选中区域图片不足，查找所有连续图片块
+    final allImages = imageRegex.allMatches(text).toList();
+    if (allImages.length < 2) {
+      // 图片数量不足
+      _showSnackBar('需要至少 2 张图片才能创建网格');
+      return;
+    }
+
+    // 查找光标所在位置附近的连续图片块
+    final cursorPos = selection.start;
+
+    // 找到包含光标位置的连续图片组
+    int? groupStart;
+    int? groupEnd;
+    int consecutiveStart = 0;
+
+    for (int i = 0; i < allImages.length; i++) {
+      final match = allImages[i];
+
+      // 检查是否与前一个图片连续（之间只有空白）
+      if (i == 0) {
+        consecutiveStart = i;
+      } else {
+        final prevMatch = allImages[i - 1];
+        final between = text.substring(prevMatch.end, match.start);
+        if (between.trim().isNotEmpty) {
+          // 不连续，开始新组
+          consecutiveStart = i;
+        }
+      }
+
+      // 检查光标是否在这个图片附近
+      if (cursorPos >= allImages[consecutiveStart].start && cursorPos <= match.end + 10) {
+        groupStart = allImages[consecutiveStart].start;
+        groupEnd = match.end;
+
+        // 继续查找后续连续的图片
+        for (int j = i + 1; j < allImages.length; j++) {
+          final nextMatch = allImages[j];
+          final between = text.substring(allImages[j - 1].end, nextMatch.start);
+          if (between.trim().isEmpty) {
+            groupEnd = nextMatch.end;
+          } else {
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    if (groupStart == null || groupEnd == null) {
+      // 找不到光标附近的图片组，使用所有图片
+      groupStart = allImages.first.start;
+      groupEnd = allImages.last.end;
+    }
+
+    // 检查选中的图片数量
+    final groupText = text.substring(groupStart, groupEnd);
+    final groupImages = imageRegex.allMatches(groupText).toList();
+
+    if (groupImages.length < 2) {
+      _showSnackBar('需要至少 2 张连续的图片才能创建网格');
+      return;
+    }
+
+    // 检查是否已经在 grid 内
+    final beforeGroup = text.substring(0, groupStart);
+    final afterGroup = text.substring(groupEnd);
+    if (beforeGroup.trimRight().endsWith('[grid]') && afterGroup.trimLeft().startsWith('[/grid]')) {
+      _showSnackBar('这些图片已经在网格中了');
+      return;
+    }
+
+    // 包裹图片
+    final wrappedText = '[grid]\n$groupText\n[/grid]';
+    final newText = text.replaceRange(groupStart, groupEnd, wrappedText);
+
+    widget.controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: groupStart + wrappedText.length),
+    );
+    widget.focusNode?.requestFocus();
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
   /// 插入引用（带占位符并自动选中）
   void insertQuote() {
     final selection = widget.controller.selection;
@@ -424,10 +543,11 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
       setState(() => _isUploading = true);
 
       final service = DiscourseService();
-      final url = await service.uploadImage(result.path);
+      final uploadResult = await service.uploadImage(result.path);
 
       if (!mounted) return;
-      insertText('![${result.originalName}]($url)\n');
+      // 使用 Discourse 格式：![alt|widthxheight](url)
+      insertText('${uploadResult.toMarkdown(alt: result.originalName)}\n');
     } catch (_) {
       // 错误已由 ErrorInterceptor 处理
     } finally {
@@ -553,6 +673,11 @@ class MarkdownToolbarState extends State<MarkdownToolbar> with WidgetsBindingObs
                           onPressed: _isUploading ? null : _pickAndUploadImage,
                           isLoading: _isUploading,
                         ),
+                        _ToolbarButton(
+                          icon: FontAwesomeIcons.tableColumns,
+                          onPressed: wrapImagesInGrid,
+                          tooltip: '图片网格',
+                        ),
                       ],
                     ),
                   ),
@@ -617,11 +742,13 @@ class _ToolbarButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final bool isLoading;
+  final String? tooltip;
 
   const _ToolbarButton({
     required this.icon,
     this.onPressed,
     this.isLoading = false,
+    this.tooltip,
   });
 
   @override
@@ -635,6 +762,7 @@ class _ToolbarButton extends StatelessWidget {
             )
           : FaIcon(icon, size: 16),
       onPressed: onPressed,
+      tooltip: tooltip,
       style: IconButton.styleFrom(
         foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
       ),

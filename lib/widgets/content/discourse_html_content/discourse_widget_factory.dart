@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../../../pages/image_viewer_page.dart';
 import '../../../services/discourse_cache_manager.dart';
-import '../../../services/discourse/discourse_service.dart';
+
+import 'image_utils.dart';
 import 'lazy_image.dart';
 
 /// 自定义 WidgetFactory，仅用于接管图片渲染
@@ -12,8 +12,6 @@ class DiscourseWidgetFactory extends WidgetFactory {
   final BuildContext context;
   final List<String> galleryImages;
 
-  // 仅缓存 upload:// 短链接的解析结果
-  static final Map<String, String?> _uploadUrlCache = {};
 
   DiscourseWidgetFactory({
     required this.context,
@@ -54,13 +52,13 @@ class DiscourseWidgetFactory extends WidgetFactory {
     final bool isEmoji = tree.element.classes.contains('emoji');
 
     // 普通 URL：直接构建 widget，无需 FutureBuilder
-    if (!url.startsWith('upload://')) {
+    if (!DiscourseImageUtils.isUploadUrl(url)) {
       return _buildImageWidget(url, url, width, height, isEmoji);
     }
 
     // upload:// 短链接：检查缓存
-    if (_uploadUrlCache.containsKey(url)) {
-      final resolvedUrl = _uploadUrlCache[url];
+    if (DiscourseImageUtils.isUploadUrlCached(url)) {
+      final resolvedUrl = DiscourseImageUtils.getCachedUploadUrl(url);
       if (resolvedUrl != null) {
         return _buildImageWidget(resolvedUrl, url, width, height, isEmoji);
       }
@@ -74,12 +72,8 @@ class DiscourseWidgetFactory extends WidgetFactory {
 
     // upload:// 短链接首次加载：使用 FutureBuilder 解析
     return FutureBuilder<String?>( 
-      future: _resolveUploadUrl(url),
+      future: DiscourseImageUtils.resolveUploadUrl(url),
       builder: (context, snapshot) {
-        // 缓存解析结果
-        if (snapshot.connectionState == ConnectionState.done) {
-          _uploadUrlCache[url] = snapshot.data;
-        }
 
         // 解析失败
         if (snapshot.connectionState == ConnectionState.done && snapshot.data == null) {
@@ -130,9 +124,9 @@ class DiscourseWidgetFactory extends WidgetFactory {
         final double emojiSize = DefaultTextStyle.of(context).style.fontSize ?? 16.0;
         final double displaySize = emojiSize * 1.2;
 
-        // 如果不是画廊图片（通常是 Emoji）
+        // 如果不是画廊图片（通常是 Emoji 或预览中的 upload:// 图片）
         if (!isGalleryImage || isEmoji) {
-           Widget emojiWidget = imageProvider != null
+           Widget imageWidget = imageProvider != null
                ? Image(
                    image: imageProvider,
                    fit: BoxFit.contain,
@@ -180,10 +174,29 @@ class DiscourseWidgetFactory extends WidgetFactory {
            if (isEmoji) {
              return Container(
                margin: const EdgeInsets.symmetric(horizontal: 2.0),
-               child: emojiWidget,
+               child: imageWidget,
              );
            }
-           return emojiWidget;
+           
+           // 非 Emoji 非画廊图片：添加点击查看功能
+           if (resolvedUrl != null && imageProvider != null) {
+             return GestureDetector(
+               onTap: () {
+                 final originalUrl = DiscourseImageUtils.getOriginalUrl(resolvedUrl);
+                 DiscourseImageUtils.openViewer(
+                   context: context,
+                   imageUrl: originalUrl,
+                   heroTag: heroTag,
+                   thumbnailUrl: resolvedUrl,
+                 );
+               },
+               child: Hero(
+                 tag: heroTag,
+                 child: imageWidget,
+               ),
+             );
+           }
+           return imageWidget;
         }
 
         // 画廊图片处理
@@ -217,25 +230,19 @@ class DiscourseWidgetFactory extends WidgetFactory {
             heroTag: heroTag,
             cacheKey: resolvedUrl, // 使用稳定的 URL 作为缓存 key
             onTap: () {
-              final originalUrl = _getOriginalUrl(resolvedUrl!);
-              final List<String> originalGalleryImages = galleryImages
-                  .map((e) => _getOriginalUrl(e))
+              final originalUrl = DiscourseImageUtils.getOriginalUrl(resolvedUrl!);
+              final originalGalleryImages = galleryImages
+                  .map((e) => DiscourseImageUtils.getOriginalUrl(e))
                   .toList();
-              // 为所有画廊图片生成确定性 hero tags
-              final int galleryHash = Object.hashAll(galleryImages);
-              final List<String> heroTags = List.generate(
-                galleryImages.length,
-                (i) => "gallery_${galleryHash}_$i",
-              );
+              final heroTags = DiscourseImageUtils.generateGalleryHeroTags(galleryImages);
 
-              ImageViewerPage.open(
-                context,
-                originalUrl,
+              DiscourseImageUtils.openViewer(
+                context: context,
+                imageUrl: originalUrl,
                 heroTag: heroTag,
                 galleryImages: originalGalleryImages,
                 heroTags: heroTags,
                 initialIndex: galleryIndex,
-                enableShare: true,
                 thumbnailUrl: resolvedUrl,
                 thumbnailUrls: galleryImages,
               );
@@ -248,44 +255,7 @@ class DiscourseWidgetFactory extends WidgetFactory {
     );
   }
 
-  Future<String?> _resolveUploadUrl(String url) async {
-     try {
-       return await DiscourseService().resolveShortUrl(url);
-     } catch (e) {
-       debugPrint('Failed to resolve upload url: $url, error: $e');
-       return null;
-     }
-  }
 
-  /// 尝试根据缩略图/优化图 URL 推导原图 URL
-  String _getOriginalUrl(String optimizedUrl) {
-    // 示例 optimized: .../uploads/default/optimized/4X/7/5/c/75c...dc_2_690x270.png
-    // 示例 original:  .../uploads/default/original/4X/7/5/c/75c...dc.png
-
-    if (!optimizedUrl.contains('/optimized/')) {
-      return optimizedUrl;
-    }
-
-    try {
-      // 1. 替换路径段
-      var original = optimizedUrl.replaceFirst('/optimized/', '/original/');
-
-      // 2. 移除分辨率后缀 (e.g. _2_690x270)
-      // 正则匹配： _\d+_\d+x\d+
-      // 通常是 _2_WidthxHeight 或者 _1_...
-      // 这里的 \d+x\d+ 匹配尺寸
-      final regex = RegExp(r'_\d+_\d+x\d+(?=\.[a-zA-Z0-9]+$)');
-
-      if (regex.hasMatch(original)) {
-        original = original.replaceAll(regex, '');
-      }
-
-      return original;
-    } catch (e) {
-      debugPrint('Error converting to original url: $e');
-      return optimizedUrl;
-    }
-  }
 
   /// 检查 URL 是否为 SVG（处理带查询参数的情况）
   bool _isSvgUrl(String? url) {
