@@ -30,3 +30,6 @@ export 'emoji_provider.dart';
 
 // 会话未读状态相关
 export 'topic_session_provider.dart';
+
+// 搜索设置相关
+export 'search_settings_provider.dart';

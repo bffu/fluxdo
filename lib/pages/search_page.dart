@@ -12,19 +12,6 @@ import '../widgets/common/loading_spinner.dart';
 import '../widgets/common/topic_badges.dart';
 import 'user_profile_page.dart';
 
-/// 搜索排序方式
-enum SearchSortOrder {
-  relevance('相关性', null),
-  latest('最新帖子', 'latest'),
-  likes('最受欢迎', 'likes'),
-  views('最多浏览', 'views'),
-  latestTopic('最新话题', 'latest_topic');
-
-  final String label;
-  final String? value;
-  const SearchSortOrder(this.label, this.value);
-}
-
 /// 搜索页面
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialQuery;
@@ -41,7 +28,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final _scrollController = ScrollController();
 
   String _currentQuery = '';
-  SearchSortOrder _sortOrder = SearchSortOrder.relevance;
   int _currentPage = 1;
   bool _isLoadingMore = false;
   List<SearchPost> _allPosts = [];
@@ -150,15 +136,40 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   void _onSortChanged(SearchSortOrder? order) {
-    if (order != null && order != _sortOrder) {
+    final currentOrder = ref.read(searchSettingsProvider).sortOrder;
+    if (order != null && order != currentOrder) {
+      ref.read(searchSettingsProvider.notifier).setSortOrder(order);
       setState(() {
-        _sortOrder = order;
         _currentPage = 1;
         _allPosts = [];
         _allUsers = [];
       });
       _performSearch();
     }
+  }
+
+  /// 从查询字符串中移除 order:xxx 部分，返回纯净的查询
+  String _stripOrderFromQuery(String query) {
+    // 匹配 order:xxx 格式（包括前后可能的空格）
+    return query
+        .replaceAll(
+          RegExp(r'\s*order:(relevance|latest|likes|views|latest_topic)\s*'),
+          ' ',
+        )
+        .trim();
+  }
+
+  /// 从查询字符串中提取排序方式
+  SearchSortOrder? _extractOrderFromQuery(String query) {
+    final match = RegExp(
+      r'order:(relevance|latest|likes|views|latest_topic)',
+    ).firstMatch(query);
+    if (match == null) return null;
+    final orderValue = match.group(1);
+    return SearchSortOrder.values.firstWhere(
+      (e) => e.value == orderValue,
+      orElse: () => SearchSortOrder.relevance,
+    );
   }
 
   Future<void> _performSearch() async {
@@ -173,12 +184,17 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     try {
       final service = ref.read(discourseServiceProvider);
-      String searchQuery = _currentQuery;
-      if (_sortOrder.value != null) {
-        searchQuery = '$_currentQuery order:${_sortOrder.value}';
+      final sortOrder = ref.read(searchSettingsProvider).sortOrder;
+      // 先移除查询中已有的 order:xxx，再添加当前排序设置
+      final cleanQuery = _stripOrderFromQuery(_currentQuery);
+      String searchQuery = cleanQuery;
+      if (sortOrder.value != null) {
+        searchQuery = '$cleanQuery order:${sortOrder.value}';
       }
-      final result =
-          await service.search(query: searchQuery, page: _currentPage);
+      final result = await service.search(
+        query: searchQuery,
+        page: _currentPage,
+      );
 
       setState(() {
         if (_currentPage == 1) {
@@ -243,8 +259,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             hintText: '搜索 @用户 #分类 tags:标签',
             border: InputBorder.none,
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 12,
+            ),
             suffixIcon: _searchController.text.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.close, size: 20),
@@ -295,7 +313,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   ),
                 ),
                 GestureDetector(
-                  onTap: _isClearingRecentSearches ? null : _clearRecentSearches,
+                  onTap: _isClearingRecentSearches
+                      ? null
+                      : _clearRecentSearches,
                   child: _isClearingRecentSearches
                       ? SizedBox(
                           width: 12,
@@ -316,7 +336,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             ),
           ),
           // 搜索记录列表
-          ..._recentSearches.map((query) => _buildRecentSearchItem(query, theme)),
+          ..._recentSearches.map(
+            (query) => _buildRecentSearchItem(query, theme),
+          ),
         ],
       );
     }
@@ -326,11 +348,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.search,
-            size: 64,
-            color: theme.colorScheme.outline,
-          ),
+          Icon(Icons.search, size: 64, color: theme.colorScheme.outline),
           const SizedBox(height: 16),
           Text(
             '输入关键词搜索',
@@ -345,10 +363,21 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   /// 构建最近搜索项
   Widget _buildRecentSearchItem(String query, ThemeData theme) {
+    // 提取纯净查询（用于显示和搜索）
+    final cleanQuery = _stripOrderFromQuery(query);
+
     return InkWell(
       onTap: () {
-        _searchController.text = query;
-        _onSearch(query);
+        // 如果历史记录中有排序设置，恢复它
+        final extractedOrder = _extractOrderFromQuery(query);
+        if (extractedOrder != null) {
+          ref
+              .read(searchSettingsProvider.notifier)
+              .setSortOrder(extractedOrder);
+        }
+        // 使用纯净查询
+        _searchController.text = cleanQuery;
+        _onSearch(cleanQuery);
       },
       borderRadius: BorderRadius.circular(8),
       child: Padding(
@@ -371,11 +400,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Icon(
-              Icons.north_west,
-              size: 16,
-              color: theme.colorScheme.outline,
-            ),
+            Icon(Icons.north_west, size: 16, color: theme.colorScheme.outline),
           ],
         ),
       ),
@@ -410,7 +435,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 ),
                 const SizedBox(width: 8),
                 DropdownButton<SearchSortOrder>(
-                  value: _sortOrder,
+                  value: ref.watch(searchSettingsProvider).sortOrder,
                   isDense: true,
                   underline: const SizedBox(),
                   items: SearchSortOrder.values.map((order) {
@@ -435,7 +460,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           child: ListView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.all(16),
-            itemCount: _allPosts.length +
+            itemCount:
+                _allPosts.length +
                 (_allUsers.isNotEmpty ? _allUsers.length + 1 : 0) +
                 (_isLoadingMore ? 1 : 0),
             itemBuilder: (context, index) {
@@ -466,7 +492,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 return Padding(
                   padding: const EdgeInsets.only(top: 16, bottom: 8),
                   child: _buildSectionHeader(
-                      '用户', _allUsers.length, _hasMoreUsers),
+                    '用户',
+                    _allUsers.length,
+                    _hasMoreUsers,
+                  ),
                 );
               }
 
@@ -481,7 +510,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => UserProfilePage(
-                              username: _allUsers[userIndex].username),
+                            username: _allUsers[userIndex].username,
+                          ),
                         ),
                       );
                     },
@@ -511,16 +541,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 48,
-            color: theme.colorScheme.error,
-          ),
+          Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
           const SizedBox(height: 16),
-          Text(
-            '搜索出错',
-            style: theme.textTheme.titleMedium,
-          ),
+          Text('搜索出错', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           Text(
             error,
@@ -540,11 +563,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.search_off,
-            size: 64,
-            color: theme.colorScheme.outline,
-          ),
+          Icon(Icons.search_off, size: 64, color: theme.colorScheme.outline),
           const SizedBox(height: 16),
           Text(
             '没有找到相关结果',
@@ -625,7 +644,7 @@ class _SearchPostCard extends ConsumerWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha:0.5),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
       child: InkWell(
@@ -640,15 +659,15 @@ class _SearchPostCard extends ConsumerWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _buildTopicTitle(post, topic, theme),
-                    ),
+                    Expanded(child: _buildTopicTitle(post, topic, theme)),
                     // 楼层号
                     if (post.postNumber > 1)
                       Container(
                         margin: const EdgeInsets.only(left: 8),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(10),
@@ -684,11 +703,9 @@ class _SearchPostCard extends ConsumerWidget {
                         ),
 
                       // 标签 Badges
-                      ...topic.tags.take(3).map(
-                            (tag) => TagBadge(
-                              name: tag.name,
-                            ),
-                          ),
+                      ...topic.tags
+                          .take(3)
+                          .map((tag) => TagBadge(name: tag.name)),
                     ],
                   ),
                 ),
@@ -724,8 +741,11 @@ class _SearchPostCard extends ConsumerWidget {
 
                   // 点赞数
                   if (post.likeCount > 0) ...[
-                    Icon(Icons.favorite_border_rounded,
-                        size: 16, color: theme.colorScheme.onSurfaceVariant),
+                    Icon(
+                      Icons.favorite_border_rounded,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       NumberUtils.formatCount(post.likeCount),
@@ -740,7 +760,9 @@ class _SearchPostCard extends ConsumerWidget {
                   Text(
                     TimeUtils.formatRelativeTime(post.createdAt),
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha:0.7),
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.7,
+                      ),
                     ),
                   ),
                 ],
@@ -752,8 +774,7 @@ class _SearchPostCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildTopicTitle(
-      SearchPost post, SearchTopic topic, ThemeData theme) {
+  Widget _buildTopicTitle(SearchPost post, SearchTopic topic, ThemeData theme) {
     // 如果有高亮标题，使用高亮版本
     if (post.topicTitleHeadline != null &&
         post.topicTitleHeadline!.isNotEmpty) {
@@ -773,11 +794,7 @@ class _SearchPostCard extends ConsumerWidget {
         if (topic.closed)
           Padding(
             padding: const EdgeInsets.only(right: 6, top: 2),
-            child: Icon(
-              Icons.lock,
-              size: 16,
-              color: theme.colorScheme.outline,
-            ),
+            child: Icon(Icons.lock, size: 16, color: theme.colorScheme.outline),
           ),
         if (topic.archived)
           Padding(
@@ -814,8 +831,11 @@ class _SearchPostCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildHighlightedText(String text, ThemeData theme,
-      {TextStyle? style}) {
+  Widget _buildHighlightedText(
+    String text,
+    ThemeData theme, {
+    TextStyle? style,
+  }) {
     // Discourse 使用 <span class="search-highlight">...</span> 来高亮
     final regex = RegExp(r'<span class="search-highlight">(.*?)</span>');
     final matches = regex.allMatches(text);
@@ -845,35 +865,34 @@ class _SearchPostCard extends ConsumerWidget {
 
       // 添加高亮文本
       final highlightedText = match.group(1) ?? '';
-      spans.add(TextSpan(
-        text: highlightedText,
-        style: TextStyle(
-          backgroundColor: theme.colorScheme.primaryContainer,
-          color: theme.colorScheme.onPrimaryContainer,
-          fontWeight: FontWeight.w600,
+      spans.add(
+        TextSpan(
+          text: highlightedText,
+          style: TextStyle(
+            backgroundColor: theme.colorScheme.primaryContainer,
+            color: theme.colorScheme.onPrimaryContainer,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ));
+      );
 
       lastEnd = match.end;
     }
 
     // 添加剩余文本
     if (lastEnd < text.length) {
-      final afterText =
-          text.substring(lastEnd).replaceAll(RegExp(r'<[^>]*>'), '');
+      final afterText = text
+          .substring(lastEnd)
+          .replaceAll(RegExp(r'<[^>]*>'), '');
       spans.add(TextSpan(text: afterText));
     }
 
     return RichText(
-      text: TextSpan(
-        style: style,
-        children: spans,
-      ),
+      text: TextSpan(style: style, children: spans),
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
     );
   }
-
 }
 
 /// 搜索结果用户卡片 - 复用 TopicCard 风格
@@ -894,7 +913,7 @@ class _SearchUserCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha:0.5),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
       child: InkWell(
@@ -932,10 +951,7 @@ class _SearchUserCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                color: theme.colorScheme.outline,
-              ),
+              Icon(Icons.chevron_right, color: theme.colorScheme.outline),
             ],
           ),
         ),
