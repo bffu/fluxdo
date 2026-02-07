@@ -173,12 +173,14 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
       }
     }
 
-    // 2. 给内联代码添加空白占位（WidgetSpan 作为边距空间）
+    // 2. 给内联代码前后添加不换行空格（\u00A0）作为粘性内边距
+    // 在 code 外部使用普通字体渲染（宽度可控），不换行特性确保和 code 粘在一起
+    // 同时匹配 \u00A0 和 &nbsp;（innerHtml 会将 \u00A0 序列化为 &nbsp;）
     processedHtml = processedHtml.replaceAllMapped(
-      RegExp(r'<code>([^<]*)</code>', caseSensitive: false),
+      RegExp('(?:\u00A0|&nbsp;)?<code>([^<]*)</code>(?:\u00A0|&nbsp;)?', caseSensitive: false),
       (match) {
         final content = match.group(1)!;
-        return '<span class="code-spacer"></span><code>$content</code><span class="code-spacer"></span>';
+        return '\u00A0<code>$content</code>\u00A0';
       },
     );
 
@@ -423,13 +425,6 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
 
   Widget? _buildCustomWidget(BuildContext context, dynamic element) {
     final theme = Theme.of(context);
-
-    // 处理内联代码空白占位（固定宽度，背景会扩展到这里）
-    if (element.localName == 'span' && element.classes.contains('code-spacer')) {
-      return InlineCustomWidget(
-        child: const SizedBox(width: 4), // 4px 边距空间
-      );
-    }
 
     // 处理 iframe：统一使用 InAppWebView 渲染
     // flutter_widget_from_html 的实现全屏退出后高度异常

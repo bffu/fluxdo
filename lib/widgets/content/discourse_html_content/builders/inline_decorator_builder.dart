@@ -135,6 +135,7 @@ class _InlineDecoratorOverlayState extends State<InlineDecoratorOverlay> {
           );
 
           // 收集同一个 code 元素的所有矩形作为一组
+          // 过滤掉过窄的 rect（换行时单独留在行尾/行首的 thin space）
           final rects = <Rect>[];
           for (final box in boxes) {
             final rect = Rect.fromLTRB(
@@ -240,38 +241,53 @@ class _InlineCodePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final bgColor = isDark ? const Color(0xFF3a3a3a) : const Color(0xFFe8e8e8);
     const radius = 3.0;
-    const hPadding = 4.0; // 和 code-spacer 宽度一致
+    const hPadding = 3.5; // 匹配外部 \u00A0 的宽度
+    const vPadding = 1.5; // 垂直内边距（CSS line-height 对内联 code 无效，改用绘制扩展）
 
     final paint = Paint()
       ..style = PaintingStyle.fill
       ..color = bgColor;
 
     for (final group in groups) {
-      final count = group.length;
+      // 按行分组（垂直方向有重叠的视为同一行）
+      final rows = <List<Rect>>[];
+      for (final rect in group) {
+        bool added = false;
+        for (final row in rows) {
+          if (rect.top < row.first.bottom && rect.bottom > row.first.top) {
+            row.add(rect);
+            added = true;
+            break;
+          }
+        }
+        if (!added) {
+          rows.add([rect]);
+        }
+      }
 
-      for (int i = 0; i < count; i++) {
-        final rect = group[i];
+      final rowCount = rows.length;
+      for (int i = 0; i < rowCount; i++) {
+        final row = rows[i];
+        // 单行内按左边位置排序
+        row.sort((a, b) => a.left.compareTo(b.left));
+
         final isFirst = i == 0;
-        final isLast = i == count - 1;
+        final isLast = i == rowCount - 1;
 
-        // 背景向外扩展到 spacer 位置
-        final paddedRect = Rect.fromLTRB(
-          rect.left - hPadding,
-          rect.top,
-          rect.right + hPadding,
-          rect.bottom,
+        // 合并同行所有 rect 为一个完整区域，加上内边距
+        final merged = Rect.fromLTRB(
+          row.first.left - hPadding,
+          row.map((r) => r.top).reduce((a, b) => a < b ? a : b) - vPadding,
+          row.last.right + hPadding,
+          row.map((r) => r.bottom).reduce((a, b) => a > b ? a : b) + vPadding,
         );
 
-        // 根据位置决定圆角
-        // 单行：四角都有圆角
-        // 多行第一行：左边有圆角，右边没有
-        // 多行最后一行：左边没有圆角，右边有圆角
-        // 多行中间行：都没有圆角
+        // 第一行左圆角，最后一行右圆角，中间直角
         final Radius leftRadius = isFirst ? const Radius.circular(radius) : Radius.zero;
         final Radius rightRadius = isLast ? const Radius.circular(radius) : Radius.zero;
 
         final rrect = RRect.fromRectAndCorners(
-          paddedRect,
+          merged,
           topLeft: leftRadius,
           bottomLeft: leftRadius,
           topRight: rightRadius,

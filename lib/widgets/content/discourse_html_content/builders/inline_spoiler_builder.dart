@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
-import 'spoiler_particles.dart';
 import 'inline_decorator_builder.dart' show isCodeMarkerStyle;
+import 'spoiler_particles.dart';
 
 /// 用于标记 spoiler 的特殊字体名称
 const String spoilerMarkerFont = '_SpoilerMarker_';
@@ -175,8 +175,10 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
       }
 
       if (textLength > 0 && inSpoiler) {
-        // 检查是否同时包含 code 标记
-        final containsCode = isCodeMarkerStyle(effectiveStyle);
+        // 检测是否同时是内联代码（code 背景会有 padding 扩展）
+        final isCode = isCodeMarkerStyle(effectiveStyle);
+        const codeHPadding = 3.5; // 与 _InlineCodePainter 的 hPadding 一致
+        const codeVPadding = 1.5; // 与 _InlineCodePainter 的 vPadding 一致
 
         try {
           final boxes = paragraph.getBoxesForSelection(
@@ -184,18 +186,27 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
           );
 
           for (final box in boxes) {
-            final rect = Rect.fromLTRB(
+            var rect = Rect.fromLTRB(
               offset.dx + box.left,
               offset.dy + box.top,
               offset.dx + box.right,
               offset.dy + box.bottom,
             );
 
+            // 如果是 code，扩展范围以覆盖 code 背景的 padding
+            if (isCode) {
+              rect = Rect.fromLTRB(
+                rect.left - codeHPadding,
+                rect.top - codeVPadding,
+                rect.right + codeHPadding,
+                rect.bottom + codeVPadding,
+              );
+            }
+
             if (rect.width > 0 && rect.height > 0) {
               tempRects.add(_TempRect(
                 rect: rect,
                 groupId: spoilerId!,
-                containsCode: containsCode,
               ));
             }
           }
@@ -244,7 +255,7 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
 
     for (final temp in tempRects) {
       groupMap.putIfAbsent(temp.groupId, () => []).add(
-        _SpoilerRect(rect: temp.rect, containsCode: temp.containsCode),
+        _SpoilerRect(rect: temp.rect),
       );
     }
 
@@ -299,7 +310,6 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
       for (final rect in row) {
         result.add(_SpoilerRect(
           rect: Rect.fromLTRB(rect.rect.left, minTop, rect.rect.right, maxBottom),
-          containsCode: rect.containsCode,
         ));
       }
     }
@@ -364,17 +374,15 @@ class SpoilerOverlayState extends State<SpoilerOverlay>
 class _TempRect {
   final Rect rect;
   final String groupId;
-  final bool containsCode;
 
-  _TempRect({required this.rect, required this.groupId, required this.containsCode});
+  _TempRect({required this.rect, required this.groupId});
 }
 
-/// Spoiler 区域（包含是否有 code 的标记）
+/// Spoiler 区域
 class _SpoilerRect {
   final Rect rect;
-  final bool containsCode;
 
-  _SpoilerRect({required this.rect, required this.containsCode});
+  _SpoilerRect({required this.rect});
 }
 
 /// Spoiler 组（一个 spoiler 可能跨多行）
@@ -402,8 +410,6 @@ class _InlineSpoilerPainter extends CustomPainter {
   final Color backgroundColor;
 
   static const alphaLevels = [0.3, 0.6, 1.0];
-  // 扩展 padding 以覆盖 code-spacer（和 code 背景的 hPadding 一致）
-  static const double codePadding = 4.0;
 
   _InlineSpoilerPainter({
     required this.groups,
@@ -420,16 +426,7 @@ class _InlineSpoilerPainter extends CustomPainter {
       // 为每个区域绘制背景和粒子
       for (final spoilerRect in group.rects) {
         final rect = spoilerRect.rect;
-        // 只有包含 code 时才扩展 padding
-        final hPadding = spoilerRect.containsCode ? codePadding : 0.0;
-
-        final paddedRect = Rect.fromLTRB(
-          rect.left - hPadding,
-          rect.top,
-          rect.right + hPadding,
-          rect.bottom,
-        );
-        final rrect = RRect.fromRectAndRadius(paddedRect, const Radius.circular(4));
+        final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
 
         // 保存画布状态，设置裁剪区域
         canvas.save();
