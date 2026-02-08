@@ -29,6 +29,8 @@ import 'widgets/topic_detail_overlay.dart';
 import 'widgets/topic_post_list.dart';
 import 'widgets/topic_detail_header.dart';
 import '../../widgets/layout/master_detail_layout.dart';
+import '../../widgets/share/share_image_preview.dart';
+import '../../widgets/share/export_sheet.dart';
 import '../edit_topic_page.dart';
 
 part 'actions/_scroll_actions.dart';
@@ -626,6 +628,8 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
                       detail: detail,
                       onScrollToTop: _scrollToTop,
                       onShare: _shareTopic,
+                      onShareAsImage: _shareAsImage,
+                      onExport: _showExportSheet,
                       onOpenInBrowser: _openInBrowser,
                       onReply: () => _handleReply(null),
                       onProgressTap: () => _showTimelineSheet(detail),
@@ -772,6 +776,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
           onJumpToPost: _scrollToPost,
           onReply: _handleReply,
           onEdit: _handleEdit,
+          onShareAsImage: _sharePostAsImage,
           onRefreshPost: _handleRefreshPost,
           onVoteChanged: _handleVoteChanged,
           onNotificationLevelChanged: (level) => _handleNotificationLevelChanged(notifier, level),

@@ -85,12 +85,22 @@ extension _MenuActions on _PostItemState {
               // 分享
               ListTile(
                 leading: Icon(Icons.share_outlined, color: theme.colorScheme.onSurface),
-                title: const Text('分享'),
+                title: const Text('分享链接'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _sharePost();
                 },
               ),
+              // 生成分享图片
+              if (widget.onShareAsImage != null)
+                ListTile(
+                  leading: Icon(Icons.image_outlined, color: theme.colorScheme.onSurface),
+                  title: const Text('生成分享图片'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    widget.onShareAsImage!();
+                  },
+                ),
               if (!isGuest) ...[
                 // 标记解决方案
                 if (widget.post.canAcceptAnswer || widget.post.canUnacceptAnswer)

@@ -10,6 +10,8 @@ class AppPreferences {
   final bool openExternalLinksInAppBrowser;
   /// 内容字体缩放比例，范围 0.8 ~ 1.4，默认 1.0
   final double contentFontScale;
+  /// 分享图片主题索引
+  final int shareImageThemeIndex;
 
   const AppPreferences({
     required this.autoPanguSpacing,
@@ -17,6 +19,7 @@ class AppPreferences {
     required this.longPressPreview,
     required this.openExternalLinksInAppBrowser,
     required this.contentFontScale,
+    required this.shareImageThemeIndex,
   });
 
   AppPreferences copyWith({
@@ -25,6 +28,7 @@ class AppPreferences {
     bool? longPressPreview,
     bool? openExternalLinksInAppBrowser,
     double? contentFontScale,
+    int? shareImageThemeIndex,
   }) {
     return AppPreferences(
       autoPanguSpacing: autoPanguSpacing ?? this.autoPanguSpacing,
@@ -33,6 +37,7 @@ class AppPreferences {
       openExternalLinksInAppBrowser:
           openExternalLinksInAppBrowser ?? this.openExternalLinksInAppBrowser,
       contentFontScale: contentFontScale ?? this.contentFontScale,
+      shareImageThemeIndex: shareImageThemeIndex ?? this.shareImageThemeIndex,
     );
   }
 }
@@ -44,6 +49,7 @@ class PreferencesNotifier extends StateNotifier<AppPreferences> {
   static const String _openExternalLinksInAppBrowserKey =
       'pref_open_external_links_in_app_browser';
   static const String _contentFontScaleKey = 'pref_content_font_scale';
+  static const String _shareImageThemeIndexKey = 'pref_share_image_theme_index';
 
   PreferencesNotifier(this._prefs)
       : super(
@@ -54,6 +60,7 @@ class PreferencesNotifier extends StateNotifier<AppPreferences> {
             openExternalLinksInAppBrowser:
                 _prefs.getBool(_openExternalLinksInAppBrowserKey) ?? false,
             contentFontScale: _prefs.getDouble(_contentFontScaleKey) ?? 1.0,
+            shareImageThemeIndex: _prefs.getInt(_shareImageThemeIndexKey) ?? 0,
           ),
         );
 
@@ -84,6 +91,11 @@ class PreferencesNotifier extends StateNotifier<AppPreferences> {
     final clampedScale = scale.clamp(0.8, 1.4);
     state = state.copyWith(contentFontScale: clampedScale);
     await _prefs.setDouble(_contentFontScaleKey, clampedScale);
+  }
+
+  Future<void> setShareImageThemeIndex(int index) async {
+    state = state.copyWith(shareImageThemeIndex: index);
+    await _prefs.setInt(_shareImageThemeIndexKey, index);
   }
 }
 

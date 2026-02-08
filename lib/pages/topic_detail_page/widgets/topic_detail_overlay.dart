@@ -13,6 +13,8 @@ class TopicDetailOverlay extends StatelessWidget {
   final TopicDetail detail;
   final VoidCallback onScrollToTop;
   final VoidCallback onShare;
+  final VoidCallback? onShareAsImage;
+  final VoidCallback? onExport;
   final VoidCallback onOpenInBrowser;
   final VoidCallback onReply;
   final VoidCallback onProgressTap;
@@ -32,6 +34,8 @@ class TopicDetailOverlay extends StatelessWidget {
     required this.detail,
     required this.onScrollToTop,
     required this.onShare,
+    this.onShareAsImage,
+    this.onExport,
     required this.onOpenInBrowser,
     required this.onReply,
     required this.onProgressTap,
@@ -78,6 +82,8 @@ class TopicDetailOverlay extends StatelessWidget {
           child: TopicBottomBar(
             onScrollToTop: onScrollToTop,
             onShare: onShare,
+            onShareAsImage: onShareAsImage,
+            onExport: onExport,
             onOpenInBrowser: onOpenInBrowser,
             hasSummary: detail.hasSummary,
             isSummaryMode: isSummaryMode,

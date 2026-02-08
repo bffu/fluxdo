@@ -34,6 +34,7 @@ class PostItem extends ConsumerStatefulWidget {
   final VoidCallback? onReply;
   final VoidCallback? onLike;
   final VoidCallback? onEdit;
+  final VoidCallback? onShareAsImage;
   final void Function(int postId)? onRefreshPost;
   final void Function(int postNumber)? onJumpToPost;
   final void Function(bool isVisible)? onVisibilityChanged;
@@ -50,6 +51,7 @@ class PostItem extends ConsumerStatefulWidget {
     this.onReply,
     this.onLike,
     this.onEdit,
+    this.onShareAsImage,
     this.onRefreshPost,
     this.onJumpToPost,
     this.onVisibilityChanged,

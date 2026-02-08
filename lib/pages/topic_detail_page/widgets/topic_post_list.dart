@@ -28,6 +28,7 @@ class TopicPostList extends StatelessWidget {
   final void Function(int postNumber) onJumpToPost;
   final void Function(Post? replyToPost) onReply;
   final void Function(Post post) onEdit; // 编辑回调
+  final void Function(Post post)? onShareAsImage; // 分享图片回调
   final void Function(int postId) onRefreshPost; // 刷新帖子回调（用于删除/恢复后）
   final void Function(int, bool) onVoteChanged;
   final void Function(TopicNotificationLevel)? onNotificationLevelChanged;
@@ -53,6 +54,7 @@ class TopicPostList extends StatelessWidget {
     required this.onJumpToPost,
     required this.onReply,
     required this.onEdit,
+    this.onShareAsImage,
     required this.onRefreshPost,
     required this.onVoteChanged,
     this.onNotificationLevelChanged,
@@ -137,6 +139,7 @@ class TopicPostList extends StatelessWidget {
                       ),
                       onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
                       onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
+                      onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
                       onRefreshPost: onRefreshPost,
                       onJumpToPost: onJumpToPost,
                       onSolutionChanged: onSolutionChanged,
@@ -218,6 +221,7 @@ class TopicPostList extends StatelessWidget {
                           ),
                           onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
                           onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
+                          onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
                           onRefreshPost: onRefreshPost,
                           onJumpToPost: onJumpToPost,
                           onSolutionChanged: onSolutionChanged,

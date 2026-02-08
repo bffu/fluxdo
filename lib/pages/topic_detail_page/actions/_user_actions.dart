@@ -181,4 +181,30 @@ extension _UserActions on _TopicDetailPageState {
       );
     }
   }
+
+  void _shareAsImage() {
+    final params = _params;
+    final detail = ref.read(topicDetailProvider(params)).value;
+    if (detail == null) return;
+
+    // 尝试获取已加载的主帖，如果没有则传 null，ShareImagePreview 会自动获取
+    final firstPost = detail.postStream.posts.where((p) => p.postNumber == 1).firstOrNull;
+    ShareImagePreview.show(context, detail, post: firstPost);
+  }
+
+  void _sharePostAsImage(Post post) {
+    final params = _params;
+    final detail = ref.read(topicDetailProvider(params)).value;
+    if (detail == null) return;
+
+    ShareImagePreview.show(context, detail, post: post);
+  }
+
+  void _showExportSheet() {
+    final params = _params;
+    final detail = ref.read(topicDetailProvider(params)).value;
+    if (detail == null) return;
+
+    ExportSheet.show(context, detail);
+  }
 }

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 class TopicBottomBar extends StatelessWidget {
   final VoidCallback? onScrollToTop;
   final VoidCallback? onShare;
+  final VoidCallback? onShareAsImage;
+  final VoidCallback? onExport;
   final VoidCallback? onOpenInBrowser;
   final bool hasSummary;
   final bool isSummaryMode;
@@ -17,6 +19,8 @@ class TopicBottomBar extends StatelessWidget {
     super.key,
     this.onScrollToTop,
     this.onShare,
+    this.onShareAsImage,
+    this.onExport,
     this.onOpenInBrowser,
     this.hasSummary = false,
     this.isSummaryMode = false,
@@ -52,12 +56,8 @@ class TopicBottomBar extends StatelessWidget {
             _buildTopRepliesButton(context),
           // 只看题主
           _buildAuthorOnlyButton(context),
-          // 分享
-          IconButton(
-            onPressed: onShare,
-            icon: const Icon(Icons.share_outlined),
-            tooltip: '分享',
-          ),
+          // 分享菜单
+          _buildShareMenu(context, theme),
           // 在浏览器打开
           IconButton(
             onPressed: onOpenInBrowser,
@@ -66,6 +66,70 @@ class TopicBottomBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildShareMenu(BuildContext context, ThemeData theme) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.share_outlined),
+      tooltip: '分享',
+      onSelected: (value) {
+        switch (value) {
+          case 'link':
+            onShare?.call();
+            break;
+          case 'image':
+            onShareAsImage?.call();
+            break;
+          case 'export':
+            onExport?.call();
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'link',
+          child: Row(
+            children: [
+              Icon(
+                Icons.link,
+                size: 20,
+                color: theme.colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              const Text('分享链接'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'image',
+          child: Row(
+            children: [
+              Icon(
+                Icons.image_outlined,
+                size: 20,
+                color: theme.colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              const Text('生成分享图片'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'export',
+          child: Row(
+            children: [
+              Icon(
+                Icons.download_outlined,
+                size: 20,
+                color: theme.colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              const Text('导出文章'),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
