@@ -31,6 +31,8 @@ import 'widgets/topic_detail_header.dart';
 import '../../widgets/layout/master_detail_layout.dart';
 import '../../widgets/share/share_image_preview.dart';
 import '../../widgets/share/export_sheet.dart';
+import '../../widgets/search/topic_search_view.dart';
+import '../../providers/topic_search_provider.dart';
 import '../edit_topic_page.dart';
 
 part 'actions/_scroll_actions.dart';
@@ -91,6 +93,9 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   /// 展开头部是否可见（用 ValueNotifier 隔离 UI 更新）
   final ValueNotifier<bool> _isOverlayVisibleNotifier = ValueNotifier<bool>(false);
   bool _isSwitchingMode = false;  // 切换热门回复模式
+  // 搜索相关
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   late final AnimationController _expandController;
   late final Animation<Offset> _animation;
   Timer? _throttleTimer;
@@ -165,6 +170,8 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     _showTitleNotifier.dispose();
     _isScrolledUnderNotifier.dispose();
     _isOverlayVisibleNotifier.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _controller.scrollController.removeListener(_onScroll);
     _screenTrack.stop();
     _controller.dispose();
@@ -281,6 +288,41 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     required TopicDetail? detail,
     required dynamic notifier,
   }) {
+    final searchState = ref.watch(topicSearchProvider(widget.topicId));
+
+    // 搜索模式下的 AppBar
+    if (searchState.isSearchMode) {
+      return AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: theme.colorScheme.surface,
+        title: TextField(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: '在本话题中搜索...',
+            border: InputBorder.none,
+            hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          style: theme.textTheme.bodyLarge,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (query) {
+            ref.read(topicSearchProvider(widget.topicId).notifier).search(query);
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () {
+              _searchController.clear();
+              ref.read(topicSearchProvider(widget.topicId).notifier).exitSearchMode();
+            },
+          ),
+        ],
+      );
+    }
+
+    // 正常模式下的 AppBar
     return PreferredSize(
       preferredSize: const Size.fromHeight(kToolbarHeight),
       child: ValueListenableBuilder<bool>(
@@ -391,6 +433,21 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     final canEditTopic = detail.canEdit || (firstPost?.canEdit ?? false);
 
     return [
+      // 搜索按钮
+      IgnorePointer(
+        ignoring: expandProgress > 0.0,
+        child: Opacity(
+          opacity: (1.0 - expandProgress).clamp(0.0, 1.0),
+          child: IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: '搜索本话题',
+            onPressed: () {
+              ref.read(topicSearchProvider(widget.topicId).notifier).enterSearchMode();
+            },
+          ),
+        ),
+      ),
+      // 更多选项
       IgnorePointer(
         ignoring: expandProgress > 0.0,
         child: Opacity(
@@ -562,6 +619,20 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     List<TypingUser> typingUsers,
   ) {
     final params = _params;
+    final searchState = ref.watch(topicSearchProvider(widget.topicId));
+
+    // 搜索模式下显示搜索视图
+    if (searchState.isSearchMode) {
+      return TopicSearchView(
+        topicId: widget.topicId,
+        onJumpToPost: (postNumber) {
+          // 退出搜索模式并跳转到指定帖子
+          ref.read(topicSearchProvider(widget.topicId).notifier).exitSearchMode();
+          _searchController.clear();
+          _scrollToPost(postNumber);
+        },
+      );
+    }
 
     // 初始加载或切换模式时显示骨架屏
     // 注意：当 hasError 为 true 时，即使 isLoading 也为 true（AsyncLoading.copyWithPrevious 语义），
