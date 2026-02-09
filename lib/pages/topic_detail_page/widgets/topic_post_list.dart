@@ -10,6 +10,11 @@ import 'typing_indicator.dart';
 
 /// 话题帖子列表
 /// 负责构建 CustomScrollView 及其 Slivers
+///
+/// 每个帖子独立生成一个 SliverToBoxAdapter，实现帖子级虚拟化：
+/// Flutter 只构建视口附近的帖子，远离视口的帖子不会被构建。
+/// 长帖子内部的 HTML 分块由 ChunkedHtmlContent 的 Column + SelectionArea 处理，
+/// 保留跨块文本选择能力。
 class TopicPostList extends StatelessWidget {
   final TopicDetail detail;
   final AutoScrollController scrollController;
@@ -27,12 +32,12 @@ class TopicPostList extends StatelessWidget {
   final void Function(int postNumber, bool isVisible) onPostVisibilityChanged;
   final void Function(int postNumber) onJumpToPost;
   final void Function(Post? replyToPost) onReply;
-  final void Function(Post post) onEdit; // 编辑回调
-  final void Function(Post post)? onShareAsImage; // 分享图片回调
-  final void Function(int postId) onRefreshPost; // 刷新帖子回调（用于删除/恢复后）
+  final void Function(Post post) onEdit;
+  final void Function(Post post)? onShareAsImage;
+  final void Function(int postId) onRefreshPost;
   final void Function(int, bool) onVoteChanged;
   final void Function(TopicNotificationLevel)? onNotificationLevelChanged;
-  final void Function(int postId, bool accepted)? onSolutionChanged; // 解决方案状态变化
+  final void Function(int postId, bool accepted)? onSolutionChanged;
   final bool Function(ScrollNotification) onScrollNotification;
 
   const TopicPostList({
@@ -79,7 +84,6 @@ class TopicPostList extends StatelessWidget {
     final posts = detail.postStream.posts;
     final hasFirstPost = posts.isNotEmpty && posts.first.postNumber == 1;
 
-    // 计算增量加载时的骨架屏数量（基于屏幕高度的 40%）
     final loadMoreSkeletonCount = calculateSkeletonCount(
       MediaQuery.of(context).size.height * 0.4,
       minCount: 2,
@@ -93,153 +97,45 @@ class TopicPostList extends StatelessWidget {
         cacheExtent: 500,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         slivers: [
-          // 向上加载的 loading 指示器 - 使用共享动画的骨架屏
+          // 向上加载骨架屏
           if (hasMoreBefore && isLoadingPrevious)
             LoadingSkeletonSliver(
               itemCount: loadMoreSkeletonCount,
               wrapContent: _wrapContent,
             ),
-          // 向上的内容（反向）
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                // 头部信息
-                if (hasFirstPost && centerPostIndex > 0 && index == centerPostIndex) {
-                  return _wrapContent(
-                    context,
-                    TopicDetailHeader(
-                      detail: detail,
-                      headerKey: headerKey,
-                      onVoteChanged: onVoteChanged,
-                      onNotificationLevelChanged: onNotificationLevelChanged,
-                    ),
-                  );
-                }
 
-                final postIndex = centerPostIndex - 1 - index;
-                if (postIndex < 0) return null;
-
-                final post = posts[postIndex];
-
-                return _wrapContent(
-                  context,
-                  AutoScrollTag(
-                    key: ValueKey('post-${post.postNumber}'),
-                    controller: scrollController,
-                    index: postIndex,
-                    child: PostItem(
-                      post: post,
-                      topicId: detail.id,
-                      highlight: highlightPostNumber == post.postNumber,
-                      isTopicOwner: detail.createdBy?.username == post.username,
-                      topicHasAcceptedAnswer: detail.hasAcceptedAnswer,
-                      acceptedAnswerPostNumber: detail.acceptedAnswerPostNumber,
-                      onLike: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('点赞功能开发中...')),
-                      ),
-                      onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
-                      onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
-                      onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
-                      onRefreshPost: onRefreshPost,
-                      onJumpToPost: onJumpToPost,
-                      onSolutionChanged: onSolutionChanged,
-                      onVisibilityChanged: (isVisible) =>
-                          onPostVisibilityChanged(post.postNumber, isVisible),
-                    ),
-                  ),
-                );
-              },
-              childCount: centerPostIndex + (hasFirstPost && centerPostIndex > 0 ? 1 : 0),
+          // 话题 Header（centerPostIndex > 0 时放在 before-center 区域）
+          if (hasFirstPost && centerPostIndex > 0)
+            SliverToBoxAdapter(
+              child: _wrapContent(
+                context,
+                TopicDetailHeader(
+                  detail: detail,
+                  headerKey: headerKey,
+                  onVoteChanged: onVoteChanged,
+                  onNotificationLevelChanged: onNotificationLevelChanged,
+                ),
+              ),
             ),
-          ),
 
-          // 中心点及向下的内容（包含头部信息，仅当从头开始加载时）
-          SliverList(
-            key: centerKey,
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                // 头部信息
-                if (hasFirstPost && centerPostIndex == 0 && index == 0) {
-                  return _wrapContent(
-                    context,
-                    TopicDetailHeader(
-                      detail: detail,
-                      headerKey: headerKey,
-                      onVoteChanged: onVoteChanged,
-                      onNotificationLevelChanged: onNotificationLevelChanged,
-                    ),
-                  );
-                }
+          // Before-center 帖子（文档顺序，Viewport 自动反转渲染）
+          for (int i = 0; i < centerPostIndex; i++)
+            _buildPostSliver(context, theme, posts[i], i),
 
-                final headerOffset = (hasFirstPost && centerPostIndex == 0) ? 1 : 0;
-                final adjustedIndex = centerPostIndex + index - headerOffset;
+          // 中心帖子（带 centerKey）
+          _buildCenterSliver(context, theme, posts, hasFirstPost),
 
-                if (adjustedIndex >= posts.length) {
-                  // 只有在没有更多数据时，才显示正在输入
-                  if (typingUsers.isNotEmpty && !hasMoreAfter) {
-                    if (adjustedIndex == posts.length) {
-                      return _wrapContent(context, TypingAvatars(users: typingUsers));
-                    }
-                  }
-                  return null;
-                }
+          // After-center 帖子
+          for (int i = centerPostIndex + 1; i < posts.length; i++)
+            _buildPostSliver(context, theme, posts[i], i),
 
-                final post = posts[adjustedIndex];
-                final showDivider = dividerPostIndex == adjustedIndex;
-
-                return _wrapContent(
-                  context,
-                  AutoScrollTag(
-                    key: ValueKey('post-${post.postNumber}'),
-                    controller: scrollController,
-                    index: adjustedIndex,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (showDivider)
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-                            color: theme.colorScheme.primaryContainer.withValues(alpha:0.3),
-                            child: Text(
-                              '上次看到这里',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        PostItem(
-                          post: post,
-                          topicId: detail.id,
-                          highlight: highlightPostNumber == post.postNumber,
-                          isTopicOwner: detail.createdBy?.username == post.username,
-                          topicHasAcceptedAnswer: detail.hasAcceptedAnswer,
-                          acceptedAnswerPostNumber: detail.acceptedAnswerPostNumber,
-                          onLike: () => ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('点赞功能开发中...')),
-                          ),
-                          onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
-                          onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
-                          onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
-                          onRefreshPost: onRefreshPost,
-                          onJumpToPost: onJumpToPost,
-                          onSolutionChanged: onSolutionChanged,
-                          onVisibilityChanged: (isVisible) =>
-                              onPostVisibilityChanged(post.postNumber, isVisible),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-              childCount: posts.length -
-                  centerPostIndex +
-                  ((hasFirstPost && centerPostIndex == 0) ? 1 : 0) +
-                  (typingUsers.isNotEmpty && !hasMoreAfter ? 1 : 0),
+          // 正在输入指示器
+          if (typingUsers.isNotEmpty && !hasMoreAfter)
+            SliverToBoxAdapter(
+              child: _wrapContent(context, TypingAvatars(users: typingUsers)),
             ),
-          ),
-          // 底部加载骨架屏 - 使用共享动画
+
+          // 底部加载骨架屏
           if (hasMoreAfter && isLoadingMore)
             LoadingSkeletonSliver(
               itemCount: loadMoreSkeletonCount,
@@ -249,6 +145,92 @@ class TopicPostList extends StatelessWidget {
             padding: EdgeInsets.only(bottom: 80 + MediaQuery.of(context).padding.bottom),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 构建中心帖子 Sliver
+  Widget _buildCenterSliver(BuildContext context, ThemeData theme, List<Post> posts, bool hasFirstPost) {
+    if (centerPostIndex == 0 && hasFirstPost) {
+      // 话题 Header 和第一个帖子组合为 center
+      return SliverMainAxisGroup(
+        key: centerKey,
+        slivers: [
+          SliverToBoxAdapter(
+            child: _wrapContent(
+              context,
+              TopicDetailHeader(
+                detail: detail,
+                headerKey: headerKey,
+                onVoteChanged: onVoteChanged,
+                onNotificationLevelChanged: onNotificationLevelChanged,
+              ),
+            ),
+          ),
+          _buildPostSliver(context, theme, posts[0], 0),
+        ],
+      );
+    }
+    return _buildPostSliver(
+      context, theme, posts[centerPostIndex], centerPostIndex,
+      key: centerKey,
+    );
+  }
+
+  /// 构建单个帖子 Sliver
+  ///
+  /// 每个帖子独立一个 SliverToBoxAdapter，实现帖子级虚拟化。
+  /// 长帖子的 HTML 分块由 PostItem 内的 ChunkedHtmlContent 处理（Column + SelectionArea），
+  /// 保留跨块文本选择。
+  Widget _buildPostSliver(BuildContext context, ThemeData theme, Post post, int postIndex, {Key? key}) {
+    final showDivider = dividerPostIndex == postIndex;
+
+    return SliverToBoxAdapter(
+      key: key,
+      child: _wrapContent(
+        context,
+        AutoScrollTag(
+          key: ValueKey('post-${post.postNumber}'),
+          controller: scrollController,
+          index: postIndex,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showDivider)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  child: Text(
+                    '上次看到这里',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              PostItem(
+                post: post,
+                topicId: detail.id,
+                highlight: highlightPostNumber == post.postNumber,
+                isTopicOwner: detail.createdBy?.username == post.username,
+                topicHasAcceptedAnswer: detail.hasAcceptedAnswer,
+                acceptedAnswerPostNumber: detail.acceptedAnswerPostNumber,
+                onLike: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('点赞功能开发中...')),
+                ),
+                onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
+                onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
+                onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
+                onRefreshPost: onRefreshPost,
+                onJumpToPost: onJumpToPost,
+                onSolutionChanged: onSolutionChanged,
+                onVisibilityChanged: (isVisible) =>
+                    onPostVisibilityChanged(post.postNumber, isVisible),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

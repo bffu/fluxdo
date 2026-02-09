@@ -6,8 +6,8 @@ import 'html_chunk_cache.dart';
 
 /// 分块 HTML 内容组件
 ///
-/// 将长 HTML 内容分割为多个块，支持懒加载渲染
-/// 当 HTML 长度超过阈值时自动启用分块模式
+/// 将长 HTML 内容分割为多个块，一次性构建所有块。
+/// 短帖子走此路径，长帖子走 Sliver 虚拟化路径（PostItemSliver）。
 class ChunkedHtmlContent extends StatefulWidget {
   final String html;
   final TextStyle? textStyle;
@@ -32,6 +32,44 @@ class ChunkedHtmlContent extends StatefulWidget {
 
   /// 话题 ID（用于链接点击追踪）
   final int? topicId;
+
+  /// 获取 HTML 分块结果，不需要分块时返回 null
+  static List<HtmlChunk>? getChunks(String html) {
+    if (html.length <= chunkThreshold) return null;
+
+    final cached = HtmlChunkCache.instance.get(html);
+    final chunks = cached ?? HtmlChunkCache.instance.parseSync(html);
+
+    if (chunks.length <= 1) return null;
+    return chunks;
+  }
+
+  /// 提取画廊图片列表
+  static List<String> extractGalleryImages(String html) {
+    final List<String> galleryImages = [];
+    final imgTagRegExp = RegExp(r'<img[^>]+>', caseSensitive: false);
+    final srcRegExp = RegExp(r'''src\s*=\s*["']?([^"'\s>]+)["']?''', caseSensitive: false);
+    final excludeClassRegExp = RegExp(
+      r'''class\s*=\s*["'][^"']*(emoji|avatar|site-icon|favicon)[^"']*["']''',
+      caseSensitive: false,
+    );
+
+    final matches = imgTagRegExp.allMatches(html);
+    for (final match in matches) {
+      final imgTag = match.group(0) ?? "";
+
+      if (excludeClassRegExp.hasMatch(imgTag)) continue;
+
+      final srcMatch = srcRegExp.firstMatch(imgTag);
+      final src = srcMatch?.group(1);
+      if (src == null) continue;
+
+      if (src.contains('/favicon') || src.contains('favicon.')) continue;
+
+      galleryImages.add(src);
+    }
+    return galleryImages;
+  }
 
   /// 预加载 HTML 分块（在获取帖子数据后调用）
   static void preload(String html) {
@@ -84,60 +122,26 @@ class _ChunkedHtmlContentState extends State<ChunkedHtmlContent> {
   }
 
   void _initChunks() {
-    // 先从完整 HTML 提取所有画廊图片
-    _galleryImages = _extractGalleryImages(widget.html);
+    _galleryImages = ChunkedHtmlContent.extractGalleryImages(widget.html);
 
     _useChunking = widget.enableChunking ??
         (widget.html.length > ChunkedHtmlContent.chunkThreshold);
 
     if (_useChunking) {
-      // 优先从缓存获取
       final cached = HtmlChunkCache.instance.get(widget.html);
       if (cached != null) {
         _chunks = cached;
-        if (_chunks!.length <= 1) {
-          _useChunking = false;
-        }
       } else {
-        // 缓存未命中，同步解析（短内容）或异步解析（长内容）
         _chunks = HtmlChunkCache.instance.parseSync(widget.html);
-        if (_chunks!.length <= 1) {
-          _useChunking = false;
-        }
+      }
+
+      if (_chunks!.length <= 1) {
+        _useChunking = false;
+        _chunks = null;
       }
     } else {
       _chunks = null;
     }
-  }
-
-  /// 提取画廊图片列表（与 DiscourseHtmlContent 保持一致）
-  List<String> _extractGalleryImages(String html) {
-    final List<String> galleryImages = [];
-    final imgTagRegExp = RegExp(r'<img[^>]+>', caseSensitive: false);
-    final srcRegExp = RegExp(r'''src\s*=\s*["']?([^"'\s>]+)["']?''', caseSensitive: false);
-    // 排除规则：emoji、头像、网站图标、favicon 等
-    final excludeClassRegExp = RegExp(
-      r'''class\s*=\s*["'][^"']*(emoji|avatar|site-icon|favicon)[^"']*["']''',
-      caseSensitive: false,
-    );
-
-    final matches = imgTagRegExp.allMatches(html);
-    for (final match in matches) {
-      final imgTag = match.group(0) ?? "";
-
-      // 排除特定 class 的图片
-      if (excludeClassRegExp.hasMatch(imgTag)) continue;
-
-      final srcMatch = srcRegExp.firstMatch(imgTag);
-      final src = srcMatch?.group(1);
-      if (src == null) continue;
-
-      // 排除 favicon 路径
-      if (src.contains('/favicon') || src.contains('favicon.')) continue;
-
-      galleryImages.add(src);
-    }
-    return galleryImages;
   }
 
   @override
@@ -155,11 +159,11 @@ class _ChunkedHtmlContentState extends State<ChunkedHtmlContent> {
       );
     }
 
-    // 分块渲染，块之间添加间距
+    // 一次性构建所有块
     final children = <Widget>[];
     for (int i = 0; i < _chunks!.length; i++) {
       final chunk = _chunks![i];
-      children.add(_ChunkWidget(
+      children.add(HtmlChunkWidget(
         key: ValueKey('chunk-${chunk.index}'),
         chunk: chunk,
         textStyle: widget.textStyle,
@@ -171,13 +175,8 @@ class _ChunkedHtmlContentState extends State<ChunkedHtmlContent> {
         post: widget.post,
         topicId: widget.topicId,
       ));
-      // 块之间添加间距（最后一个块除外）
-      if (i < _chunks!.length - 1) {
-        children.add(const SizedBox(height: 12));
-      }
     }
 
-    // 使用 SelectionArea 支持跨块选择
     return SelectionArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,8 +186,8 @@ class _ChunkedHtmlContentState extends State<ChunkedHtmlContent> {
   }
 }
 
-/// 单个块的渲染 Widget
-class _ChunkWidget extends StatelessWidget {
+/// 单个块的渲染 Widget（公开类，供 PostItemSliver 直接使用）
+class HtmlChunkWidget extends StatelessWidget {
   final HtmlChunk chunk;
   final TextStyle? textStyle;
   final void Function(int topicId, String? topicSlug, int? postNumber)? onInternalLinkTap;
@@ -199,7 +198,13 @@ class _ChunkWidget extends StatelessWidget {
   final Post? post;
   final int? topicId;
 
-  const _ChunkWidget({
+  /// 是否启用文本选择
+  ///
+  /// ChunkedHtmlContent 中由外层 SelectionArea 统一控制，此处传 false；
+  /// PostItemSliver 中各块独立存在于 SliverList，需传 true 让每块自行支持选择。
+  final bool enableSelectionArea;
+
+  const HtmlChunkWidget({
     super.key,
     required this.chunk,
     this.textStyle,
@@ -210,11 +215,11 @@ class _ChunkWidget extends StatelessWidget {
     required this.fullHtml,
     this.post,
     this.topicId,
+    this.enableSelectionArea = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    // 使用 RepaintBoundary 隔离重绘
     return RepaintBoundary(
       child: DiscourseHtmlContent(
         html: chunk.html,
@@ -222,10 +227,10 @@ class _ChunkWidget extends StatelessWidget {
         onInternalLinkTap: onInternalLinkTap,
         linkCounts: linkCounts,
         galleryImages: galleryImages,
-        enableSelectionArea: false, // 由外层 SelectionArea 统一控制
+        enableSelectionArea: enableSelectionArea,
         mentionedUsers: mentionedUsers,
         fullHtml: fullHtml,
-        isChunkChild: true, // 分块子块需要注入点击数
+        isChunkChild: true,
         post: post,
         topicId: topicId,
       ),

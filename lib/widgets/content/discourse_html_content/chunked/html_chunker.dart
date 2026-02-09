@@ -28,11 +28,11 @@ class HtmlChunker {
   /// 需要特殊处理的类名
   static const _specialClasses = {'spoiler', 'spoiled'};
 
-  /// 最大段落合并字符数
-  static const _maxMergeLength = 1000;
+  /// 最大段落合并字符数（增大以减少块数量，降低 HtmlWidget 实例开销）
+  static const _maxMergeLength = 2000;
 
   /// 最大段落合并数
-  static const _maxMergeParagraphs = 5;
+  static const _maxMergeParagraphs = 8;
 
   /// 分割 HTML 为块列表
   static List<HtmlChunk> chunk(String html) {

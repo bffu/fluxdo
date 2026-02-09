@@ -22,8 +22,7 @@ import 'builders/math_builder.dart';
 import 'builders/chat_transcript_builder.dart';
 import 'builders/iframe_builder.dart';
 import 'builders/image_grid_builder.dart';
-import 'builders/inline_spoiler_builder.dart';
-import 'builders/inline_decorator_builder.dart';
+import 'builders/combined_decorator_overlay.dart';
 import 'builders/mention_builder.dart';
 import 'image_utils.dart';
 
@@ -328,17 +327,15 @@ class _DiscourseHtmlContentState extends ConsumerState<DiscourseHtmlContent> {
       },
     );
 
-    // 用 SpoilerOverlay 和 InlineDecoratorOverlay 包裹
-    Widget result = SpoilerOverlay(
+    // 用 CombinedDecoratorOverlay 包裹（合并处理内联代码背景和 spoiler 粒子效果）
+    Widget result = CombinedDecoratorOverlay(
       revealedSpoilers: _revealedSpoilers,
       onReveal: (id) {
         setState(() {
           _revealedSpoilers.add(id);
         });
       },
-      child: InlineDecoratorOverlay(
-        child: htmlWidget,
-      ),
+      child: htmlWidget,
     );
 
     // 根据参数决定是否包裹 SelectionArea
