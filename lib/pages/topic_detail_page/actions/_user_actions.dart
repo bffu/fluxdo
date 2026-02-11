@@ -139,7 +139,7 @@ extension _UserActions on _TopicDetailPageState {
     ref.read(topicDetailProvider(params).notifier).refreshPost(postId);
   }
 
-  void _handleNotificationLevelChanged(dynamic notifier, TopicNotificationLevel level) async {
+  void _handleNotificationLevelChanged(TopicDetailNotifier notifier, TopicNotificationLevel level) async {
     try {
       await notifier.updateNotificationLevel(level);
       if (mounted) {
@@ -147,8 +147,9 @@ extension _UserActions on _TopicDetailPageState {
           SnackBar(content: Text('已设置为${level.label}')),
         );
       }
-    } catch (_) {
+    } catch (e) {
       // 错误已由 ErrorInterceptor 处理
+      debugPrint('[TopicDetail] 更新订阅级别失败: $e');
     }
   }
 

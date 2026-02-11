@@ -200,36 +200,44 @@ final topicTrackingChannelsProvider = NotifierProvider<TopicTrackingChannelsNoti
   TopicTrackingChannelsNotifier.new,
 );
 
-/// 话题列表新消息状态
+/// 话题列表新消息状态（按分类隔离）
 class TopicListIncomingState {
-  final Set<int> incomingTopicIds;
-  
-  const TopicListIncomingState({this.incomingTopicIds = const {}});
-  
-  bool get hasIncoming => incomingTopicIds.isNotEmpty;
-  int get incomingCount => incomingTopicIds.length;
-  
-  TopicListIncomingState copyWith({Set<int>? incomingTopicIds}) {
-    return TopicListIncomingState(
-      incomingTopicIds: incomingTopicIds ?? this.incomingTopicIds,
-    );
+  /// topicId → categoryId 的映射，用于按 tab/分类隔离新话题指示器
+  final Map<int, int?> incomingTopics;
+
+  const TopicListIncomingState({this.incomingTopics = const {}});
+
+  bool get hasIncoming => incomingTopics.isNotEmpty;
+  int get incomingCount => incomingTopics.length;
+
+  /// 指定分类是否有新话题（null 表示"全部"tab，统计所有分类）
+  bool hasIncomingForCategory(int? categoryId) {
+    if (categoryId == null) return incomingTopics.isNotEmpty;
+    return incomingTopics.values.any((c) => c == categoryId);
+  }
+
+  /// 获取指定分类的新话题数量（null 表示"全部"tab）
+  int incomingCountForCategory(int? categoryId) {
+    if (categoryId == null) return incomingTopics.length;
+    return incomingTopics.values.where((c) => c == categoryId).length;
   }
 }
 
 /// 话题列表频道监听器
 /// 只标记有新话题，不主动刷新（避免频繁 API 调用）
-/// 根据当前筛选条件（分类、标签）过滤消息
+/// 存储每条新话题的 categoryId，让各 tab 独立查询自己的新话题数
+/// 仅根据全局标签筛选条件过滤消息
 /// 使用防抖机制批量更新，避免频繁触发 UI 刷新
 class LatestChannelNotifier extends Notifier<TopicListIncomingState> {
   Timer? _debounceTimer;
-  final Set<int> _pendingTopicIds = {};
+  final Map<int, int?> _pendingTopics = {};
   static const _debounceDuration = Duration(seconds: 3);
 
   @override
   TopicListIncomingState build() {
     final messageBus = ref.watch(messageBusServiceProvider);
-    // 监听筛选条件变化，变化时自动 rebuild（重置 incoming 状态）
-    ref.watch(topicFilterProvider);
+    // 仅监听标签筛选变化（分类由各 tab 独立查询，不需要全局监听）
+    ref.watch(topicFilterProvider.select((f) => f.tags));
     const channel = '/latest';
 
     void onMessage(MessageBusMessage message) {
@@ -239,24 +247,14 @@ class LatestChannelNotifier extends Notifier<TopicListIncomingState> {
       final topicId = data['topic_id'] as int?;
       if (topicId == null) return;
 
-      // 获取当前筛选条件
-      final filter = ref.read(topicFilterProvider);
+      // 提取话题分类 ID（用于按 tab 隔离）
+      final payload = data['payload'] as Map<String, dynamic>?;
+      final topicCategoryId = payload?['category_id'] as int? ?? data['category_id'] as int?;
 
-      // 检查分类筛选
-      if (filter.categoryId != null) {
-        final payload = data['payload'] as Map<String, dynamic>?;
-        final topicCategoryId = payload?['category_id'] as int? ?? data['category_id'] as int?;
-        if (topicCategoryId != filter.categoryId) {
-          debugPrint('[LatestChannel] 分类不匹配，跳过: topic=$topicId, topicCategory=$topicCategoryId, filterCategory=${filter.categoryId}');
-          return; // 分类不匹配，不添加
-        }
-      }
-
-      // 检查标签筛选
-      if (filter.tags.isNotEmpty) {
-        final payload = data['payload'] as Map<String, dynamic>?;
+      // 检查全局标签筛选（标签筛选仍然是全局的）
+      final tags = ref.read(topicFilterProvider).tags;
+      if (tags.isNotEmpty) {
         final topicTags = (payload?['tags'] ?? data['tags']) as List?;
-        // 兼容新旧格式：如果是对象则取 name 字段，如果是字符串则直接用
         final topicTagStrings = topicTags?.map((t) {
           if (t is Map<String, dynamic>) {
             return t['name'] as String? ?? '';
@@ -264,28 +262,25 @@ class LatestChannelNotifier extends Notifier<TopicListIncomingState> {
           return t.toString();
         }).toList() ?? [];
 
-        // 检查话题标签是否包含筛选中的任意一个标签
-        final hasMatchingTag = filter.tags.any((t) => topicTagStrings.contains(t));
+        final hasMatchingTag = tags.any((t) => topicTagStrings.contains(t));
         if (!hasMatchingTag) {
-          debugPrint('[LatestChannel] 标签不匹配，跳过: topic=$topicId, topicTags=$topicTagStrings, filterTags=${filter.tags}');
-          return; // 标签不匹配，不添加
+          debugPrint('[LatestChannel] 标签不匹配，跳过: topic=$topicId');
+          return;
         }
       }
 
-      debugPrint('[LatestChannel] 收到新话题: $topicId，等待批量更新');
+      debugPrint('[LatestChannel] 收到新话题: $topicId (category=$topicCategoryId)');
 
-      // 添加到待处理集合
-      _pendingTopicIds.add(topicId);
+      _pendingTopics[topicId] = topicCategoryId;
 
-      // 取消之前的定时器并重新开始
       _debounceTimer?.cancel();
       _debounceTimer = Timer(_debounceDuration, () {
-        if (_pendingTopicIds.isNotEmpty) {
-          debugPrint('[LatestChannel] 批量添加 ${_pendingTopicIds.length} 条新话题');
-          state = state.copyWith(
-            incomingTopicIds: {...state.incomingTopicIds, ..._pendingTopicIds},
+        if (_pendingTopics.isNotEmpty) {
+          debugPrint('[LatestChannel] 批量添加 ${_pendingTopics.length} 条新话题');
+          state = TopicListIncomingState(
+            incomingTopics: {...state.incomingTopics, ..._pendingTopics},
           );
-          _pendingTopicIds.clear();
+          _pendingTopics.clear();
         }
       });
     }
@@ -294,18 +289,30 @@ class LatestChannelNotifier extends Notifier<TopicListIncomingState> {
 
     ref.onDispose(() {
       _debounceTimer?.cancel();
-      _pendingTopicIds.clear();
+      _pendingTopics.clear();
       messageBus.unsubscribe(channel, onMessage);
     });
 
     return const TopicListIncomingState();
   }
 
-  /// 清除新话题标记
+  /// 清除指定分类的新话题标记（null 表示清除全部）
+  void clearNewTopicsForCategory(int? categoryId) {
+    if (categoryId == null) {
+      _debounceTimer?.cancel();
+      _pendingTopics.clear();
+      state = const TopicListIncomingState();
+    } else {
+      _pendingTopics.removeWhere((_, c) => c == categoryId);
+      final remaining = Map<int, int?>.from(state.incomingTopics)
+        ..removeWhere((_, c) => c == categoryId);
+      state = TopicListIncomingState(incomingTopics: remaining);
+    }
+  }
+
+  /// 清除所有新话题标记
   void clearNewTopics() {
-    _debounceTimer?.cancel();
-    _pendingTopicIds.clear();
-    state = const TopicListIncomingState();
+    clearNewTopicsForCategory(null);
   }
 }
 

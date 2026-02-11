@@ -3,6 +3,7 @@ import 'core_providers.dart';
 import 'notification_list_provider.dart';
 import 'topic_list_provider.dart';
 import 'topic_sort_provider.dart';
+import 'pinned_categories_provider.dart';
 import 'user_content_providers.dart';
 import 'category_provider.dart';
 import 'message_bus/notification_providers.dart';
@@ -52,8 +53,14 @@ class AppStateRefresher {
     (ref) => ref.invalidate(messageBusInitProvider),
     (ref) => ref.invalidate(ldcUserInfoProvider),
     (ref) {
-      for (final filter in TopicListFilter.values) {
-        ref.invalidate(topicListProvider(filter));
+      final pinnedIds = ref.read(pinnedCategoriesProvider);
+      for (final sort in TopicListFilter.values) {
+        // 全部 tab
+        ref.invalidate(topicListProvider((sort, null)));
+        // 各分类 tab
+        for (final id in pinnedIds) {
+          ref.invalidate(topicListProvider((sort, id)));
+        }
       }
     },
   ];

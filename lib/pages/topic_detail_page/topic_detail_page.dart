@@ -133,8 +133,8 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       DiscourseService(),
       onTimingsSent: (topicId, postNumbers, highestSeen) {
         debugPrint('[TopicDetail] onTimingsSent callback triggered: topicId=$topicId, highestSeen=$highestSeen');
-        ref.read(topicListProvider(TopicListFilter.latest).notifier).updateSeen(topicId, highestSeen);
-        ref.read(topicListProvider(TopicListFilter.unread).notifier).updateSeen(topicId, highestSeen);
+        ref.read(topicListProvider((TopicListFilter.latest, null)).notifier).updateSeen(topicId, highestSeen);
+        ref.read(topicListProvider((TopicListFilter.unread, null)).notifier).updateSeen(topicId, highestSeen);
         // 更新会话已读状态，触发 PostItem 消除未读圆点
         ref.read(topicSessionProvider(topicId).notifier).markAsRead(postNumbers);
       },
@@ -284,7 +284,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   PreferredSizeWidget _buildAppBar({
     required ThemeData theme,
     required TopicDetail? detail,
-    required dynamic notifier,
+    required TopicDetailNotifier notifier,
   }) {
     final searchState = ref.watch(topicSearchProvider(widget.topicId));
 
@@ -418,7 +418,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   /// 构建 AppBar Actions
   List<Widget> _buildAppBarActions({
     required TopicDetail? detail,
-    required dynamic notifier,
+    required TopicDetailNotifier notifier,
     required bool shouldShowTitle,
     required double expandProgress,
   }) {
@@ -621,7 +621,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     BuildContext context,
     AsyncValue<TopicDetail> detailAsync,
     TopicDetail? detail,
-    dynamic notifier,
+    TopicDetailNotifier notifier,
     bool isLoggedIn,
   ) {
     final params = _params;
@@ -786,7 +786,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   Widget _buildPostListContent(
     BuildContext context,
     TopicDetail detail,
-    dynamic notifier,
+    TopicDetailNotifier notifier,
     bool isLoggedIn,
   ) {
     final posts = detail.postStream.posts;

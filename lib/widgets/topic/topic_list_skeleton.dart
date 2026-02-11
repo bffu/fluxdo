@@ -9,7 +9,7 @@ class TopicListSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Skeleton(
       child: ListView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.only(top: 8, bottom: 12),
         itemCount: 8,
         itemBuilder: (context, index) => const _TopicCardSkeleton(),
       ),

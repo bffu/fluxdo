@@ -60,15 +60,15 @@ class AdaptiveScaffold extends ConsumerWidget {
 
   Widget _buildBottomNavLayout(BuildContext context, WidgetRef ref) {
     // 仅在首页 tab 时响应滚动隐藏，其他 tab 始终显示
-    final isVisible = selectedIndex == 0
-        ? ref.watch(bottomNavVisibleProvider)
-        : true;
+    final visibility = selectedIndex == 0
+        ? ref.watch(barVisibilityProvider)
+        : 1.0;
 
     return Scaffold(
       body: body,
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: _AnimatedBottomNav(
-        visible: isVisible,
+        visibility: visibility,
         selectedIndex: selectedIndex,
         onDestinationSelected: onDestinationSelected,
         destinations: destinations,
@@ -80,33 +80,30 @@ class AdaptiveScaffold extends ConsumerWidget {
 /// 带动画的底部导航栏
 class _AnimatedBottomNav extends StatelessWidget {
   const _AnimatedBottomNav({
-    required this.visible,
+    required this.visibility,
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.destinations,
   });
 
-  final bool visible;
+  final double visibility;
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final List<AdaptiveDestination> destinations;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOutCubic,
-      alignment: Alignment.topCenter,
-      child: SizedBox(
-        height: visible ? null : 0,
-        child: Wrap(
-          children: [
-            AdaptiveBottomNavigation(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: onDestinationSelected,
-              destinations: destinations,
-            ),
-          ],
+    return ClipRect(
+      child: Align(
+        alignment: Alignment.topCenter,
+        heightFactor: visibility,
+        child: Opacity(
+          opacity: visibility,
+          child: AdaptiveBottomNavigation(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: onDestinationSelected,
+            destinations: destinations,
+          ),
         ),
       ),
     );

@@ -6,6 +6,7 @@ import '../services/discourse/discourse_service.dart';
 import '../utils/pagination_helper.dart';
 import '../widgets/topic/topic_filter_sheet.dart';
 import 'core_providers.dart';
+import 'category_provider.dart';
 
 enum TopicListFilter {
   latest,
@@ -38,7 +39,10 @@ extension TopicListFilterX on TopicListFilter {
 class TopicListNotifier extends AsyncNotifier<List<Topic>> {
   TopicListNotifier(this.arg);
 
-  final TopicListFilter arg;
+  final (TopicListFilter, int?) arg;
+
+  TopicListFilter get _sort => arg.$1;
+  int? get _categoryId => arg.$2;
 
   int _page = 0;
   bool _hasMore = true;
@@ -51,15 +55,16 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
 
   @override
   Future<List<Topic>> build() async {
-    // 监听筛选条件变化
-    final filter = ref.watch(topicFilterProvider);
+    // 监听标签变化（分类由 arg 提供，不监听 topicFilterProvider 的分类）
+    final tags = ref.watch(topicFilterProvider.select((f) => f.tags));
+    final filter = _buildFilterParams(tags);
 
     _page = 0;
     _hasMore = true;
 
     // 优化：如果是 latest 列表且没有筛选条件，优先同步使用预加载数据
     // 这样可以避免显示 loading 状态
-    if (arg == TopicListFilter.latest && filter.isEmpty) {
+    if (_sort == TopicListFilter.latest && filter.isEmpty) {
       final preloadedService = PreloadedDataService();
       final preloadedData = preloadedService.getInitialTopicListSync();
       if (preloadedData != null) {
@@ -83,7 +88,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
 
     // 如果没有预加载数据，走正常的异步流程
     final service = ref.read(discourseServiceProvider);
-    final response = await _fetchTopics(service, arg, 0, filter);
+    final response = await _fetchTopics(service, _sort, 0, filter);
 
     final result = _paginationHelper.processRefresh(
       PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
@@ -128,6 +133,34 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
 
   String _getFilterName(TopicListFilter filter) => filter.filterName;
 
+  /// 根据分类 ID 和标签构建筛选参数
+  TopicFilterParams _buildFilterParams(List<String> tags) {
+    if (_categoryId == null && tags.isEmpty) {
+      return const TopicFilterParams();
+    }
+    if (_categoryId != null) {
+      final categoryMap = ref.read(categoryMapProvider).value ?? {};
+      final category = categoryMap[_categoryId];
+      String? parentSlug;
+      if (category?.parentCategoryId != null) {
+        parentSlug = categoryMap[category!.parentCategoryId]?.slug;
+      }
+      return TopicFilterParams(
+        categoryId: _categoryId,
+        categorySlug: category?.slug,
+        categoryName: category?.name,
+        parentCategorySlug: parentSlug,
+        tags: tags,
+      );
+    }
+    return TopicFilterParams(tags: tags);
+  }
+
+  /// 获取当前筛选参数（供非 build 方法使用）
+  TopicFilterParams _currentFilterParams() {
+    return _buildFilterParams(ref.read(topicFilterProvider).tags);
+  }
+
   /// 刷新列表
   Future<void> refresh() async {
     state = const AsyncValue.loading();
@@ -135,8 +168,8 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       _page = 0;
       _hasMore = true;
       final service = ref.read(discourseServiceProvider);
-      final filterParams = ref.read(topicFilterProvider);
-      final response = await _fetchTopics(service, arg, 0, filterParams);
+      final filterParams = _currentFilterParams();
+      final response = await _fetchTopics(service, _sort, 0, filterParams);
 
       final result = _paginationHelper.processRefresh(
         PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
@@ -149,9 +182,9 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
   /// 静默刷新
   Future<void> silentRefresh() async {
     final service = ref.read(discourseServiceProvider);
-    final filterParams = ref.read(topicFilterProvider);
+    final filterParams = _currentFilterParams();
     try {
-      final response = await _fetchTopics(service, arg, 0, filterParams);
+      final response = await _fetchTopics(service, _sort, 0, filterParams);
       _page = 0;
 
       final result = _paginationHelper.processRefresh(
@@ -176,8 +209,8 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       final nextPage = _page + 1;
 
       final service = ref.read(discourseServiceProvider);
-      final filterParams = ref.read(topicFilterProvider);
-      final response = await _fetchTopics(service, arg, nextPage, filterParams);
+      final filterParams = _currentFilterParams();
+      final response = await _fetchTopics(service, _sort, nextPage, filterParams);
 
       final currentState = PaginationState(items: currentTopics);
       final result = _paginationHelper.processLoadMore(
@@ -286,7 +319,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
   }
 }
 
-final topicListProvider = AsyncNotifierProvider.family<TopicListNotifier, List<Topic>, TopicListFilter>(
+final topicListProvider = AsyncNotifierProvider.family<TopicListNotifier, List<Topic>, (TopicListFilter, int?)>(
   TopicListNotifier.new,
 );
 
