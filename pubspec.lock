@@ -121,6 +121,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  chat_bottom_container:
+    dependency: "direct main"
+    description:
+      name: chat_bottom_container
+      sha256: "29c99d930d619383f4bfbdb6e802d173b5bf68ec81cf5d2e0aaba93f441770e8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.0"
   chewie:
     dependency: transitive
     description:
