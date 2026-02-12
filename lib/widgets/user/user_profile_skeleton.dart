@@ -60,10 +60,10 @@ class UserProfileSkeleton extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: List.generate(
-          5,
+          6,
           (index) {
             // 不同宽度模拟真实 Tab 文字长度
-            final widths = [32.0, 32.0, 32.0, 24.0, 32.0];
+            final widths = [32.0, 32.0, 32.0, 32.0, 24.0, 32.0];
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: SkeletonBox(

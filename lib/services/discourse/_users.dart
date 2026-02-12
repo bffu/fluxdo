@@ -66,10 +66,11 @@ mixin _UsersMixin on _DiscourseServiceBase {
     }
   }
 
-  /// 获取用户统计数据（带缓存）
+  /// 获取用户统计数据（带缓存，按用户名区分）
   Future<UserSummary> getUserSummary(String username, {bool forceRefresh = false}) async {
     if (!forceRefresh &&
         _cachedUserSummary != null &&
+        _cachedUserSummaryUsername == username &&
         _userSummaryCacheTime != null &&
         DateTime.now().difference(_userSummaryCacheTime!) < DiscourseService._summaryCacheDuration) {
       return _cachedUserSummary!;
@@ -79,6 +80,7 @@ mixin _UsersMixin on _DiscourseServiceBase {
     final summary = UserSummary.fromJson(response.data);
 
     _cachedUserSummary = summary;
+    _cachedUserSummaryUsername = username;
     _userSummaryCacheTime = DateTime.now();
 
     return summary;
@@ -100,13 +102,13 @@ mixin _UsersMixin on _DiscourseServiceBase {
   }
 
   /// 获取用户动态
-  Future<UserActionResponse> getUserActions(String username, {int? filter, int offset = 0}) async {
+  Future<UserActionResponse> getUserActions(String username, {String? filter, int offset = 0}) async {
     final queryParams = <String, dynamic>{
       'username': username,
       'offset': offset,
     };
     if (filter != null) {
-      queryParams['filter'] = filter.toString();
+      queryParams['filter'] = filter;
     }
     final response = await _dio.get('/user_actions.json', queryParameters: queryParams);
     return UserActionResponse.fromJson(response.data);

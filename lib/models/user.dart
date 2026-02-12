@@ -1,5 +1,6 @@
 import '../utils/time_utils.dart';
 import '../utils/url_helper.dart';
+import 'badge.dart';
 
 /// 用户数据模型
 class User {
@@ -256,7 +257,17 @@ class UserSummary {
   final int postCount;
   final int timeRead; // 秒
   final int bookmarkCount;
-  
+
+  // 详细统计
+  final List<SummaryTopic> topics;
+  final List<SummaryReply> replies;
+  final List<SummaryLink> links;
+  final List<SummaryUserWithCount> mostRepliedToUsers;
+  final List<SummaryUserWithCount> mostLikedByUsers;
+  final List<SummaryUserWithCount> mostLikedUsers;
+  final List<SummaryCategory> topCategories;
+  final List<Badge> badges;
+
   UserSummary({
     required this.daysVisited,
     required this.postsReadCount,
@@ -266,10 +277,39 @@ class UserSummary {
     required this.postCount,
     required this.timeRead,
     required this.bookmarkCount,
+    this.topics = const [],
+    this.replies = const [],
+    this.links = const [],
+    this.mostRepliedToUsers = const [],
+    this.mostLikedByUsers = const [],
+    this.mostLikedUsers = const [],
+    this.topCategories = const [],
+    this.badges = const [],
   });
-  
+
   factory UserSummary.fromJson(Map<String, dynamic> json) {
     final summary = json['user_summary'] as Map<String, dynamic>? ?? {};
+
+    // 热门话题：完整数据在顶层 json['topics'] 中 sideload
+    final sideloadedTopics = json['topics'] as List<dynamic>? ?? [];
+    final topics = sideloadedTopics
+        .map((e) => SummaryTopic.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final topicMap = {for (final t in topics) t.id: t};
+
+    // 解析回复列表
+    final repliesJson = summary['replies'] as List<dynamic>? ?? [];
+    // 解析链接列表
+    final linksJson = summary['links'] as List<dynamic>? ?? [];
+    // 解析用户列表
+    final mostRepliedTo = summary['most_replied_to_users'] as List<dynamic>? ?? [];
+    final mostLikedBy = summary['most_liked_by_users'] as List<dynamic>? ?? [];
+    final mostLiked = summary['most_liked_users'] as List<dynamic>? ?? [];
+    // 解析分类列表
+    final topCats = summary['top_categories'] as List<dynamic>? ?? [];
+    // 热门徽章：完整数据在顶层 json['badges'] 中 sideload
+    final badgesJson = json['badges'] as List<dynamic>? ?? [];
+
     return UserSummary(
       daysVisited: summary['days_visited'] as int? ?? 0,
       postsReadCount: summary['posts_read_count'] as int? ?? 0,
@@ -279,15 +319,186 @@ class UserSummary {
       postCount: summary['post_count'] as int? ?? 0,
       timeRead: summary['time_read'] as int? ?? 0,
       bookmarkCount: summary['bookmark_count'] as int? ?? 0,
+      topics: topics,
+      replies: repliesJson.map((e) => SummaryReply.fromJson(e as Map<String, dynamic>, topicMap)).toList(),
+      links: linksJson.map((e) => SummaryLink.fromJson(e as Map<String, dynamic>, topicMap)).toList(),
+      mostRepliedToUsers: mostRepliedTo.map((e) => SummaryUserWithCount.fromJson(e as Map<String, dynamic>)).toList(),
+      mostLikedByUsers: mostLikedBy.map((e) => SummaryUserWithCount.fromJson(e as Map<String, dynamic>)).toList(),
+      mostLikedUsers: mostLiked.map((e) => SummaryUserWithCount.fromJson(e as Map<String, dynamic>)).toList(),
+      topCategories: topCats.map((e) => SummaryCategory.fromJson(e as Map<String, dynamic>)).toList(),
+      badges: badgesJson.map((e) => Badge.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
-  
+
   /// 格式化阅读时间
   String get formattedTimeRead {
     final hours = timeRead ~/ 3600;
     if (hours > 0) return '${hours}h';
     final minutes = timeRead ~/ 60;
     return '${minutes}m';
+  }
+}
+
+/// 总结页 - 话题
+class SummaryTopic {
+  final int id;
+  final String title;
+  final String? slug;
+  final int likeCount;
+  final int? categoryId;
+  final DateTime? createdAt;
+
+  const SummaryTopic({
+    required this.id,
+    required this.title,
+    this.slug,
+    this.likeCount = 0,
+    this.categoryId,
+    this.createdAt,
+  });
+
+  factory SummaryTopic.fromJson(Map<String, dynamic> json) {
+    return SummaryTopic(
+      id: json['id'] as int? ?? 0,
+      title: json['title'] as String? ?? '',
+      slug: json['slug'] as String?,
+      likeCount: json['like_count'] as int? ?? 0,
+      categoryId: json['category_id'] as int?,
+      createdAt: TimeUtils.parseUtcTime(json['created_at'] as String?),
+    );
+  }
+}
+
+/// 总结页 - 回复
+class SummaryReply {
+  final int? topicId;
+  final int postNumber;
+  final int likeCount;
+  final DateTime? createdAt;
+  final SummaryTopic? topic;
+
+  const SummaryReply({
+    this.topicId,
+    required this.postNumber,
+    this.likeCount = 0,
+    this.createdAt,
+    this.topic,
+  });
+
+  factory SummaryReply.fromJson(Map<String, dynamic> json, Map<int, SummaryTopic> topicMap) {
+    final topicId = json['topic_id'] as int?;
+    // 优先从嵌套的 topic 对象解析，其次从 sideload 映射中查找
+    final topicJson = json['topic'] as Map<String, dynamic>?;
+    final topic = topicJson != null
+        ? SummaryTopic.fromJson(topicJson)
+        : (topicId != null ? topicMap[topicId] : null);
+    return SummaryReply(
+      topicId: topicId ?? topic?.id,
+      postNumber: json['post_number'] as int? ?? 0,
+      likeCount: json['like_count'] as int? ?? 0,
+      createdAt: TimeUtils.parseUtcTime(json['created_at'] as String?),
+      topic: topic,
+    );
+  }
+}
+
+/// 总结页 - 链接
+class SummaryLink {
+  final String url;
+  final String? title;
+  final int clicks;
+  final int? postNumber;
+  final int? topicId;
+  final SummaryTopic? topic;
+
+  const SummaryLink({
+    required this.url,
+    this.title,
+    this.clicks = 0,
+    this.postNumber,
+    this.topicId,
+    this.topic,
+  });
+
+  factory SummaryLink.fromJson(Map<String, dynamic> json, Map<int, SummaryTopic> topicMap) {
+    final topicId = json['topic_id'] as int?;
+    final topicJson = json['topic'] as Map<String, dynamic>?;
+    final topic = topicJson != null
+        ? SummaryTopic.fromJson(topicJson)
+        : (topicId != null ? topicMap[topicId] : null);
+    return SummaryLink(
+      url: json['url'] as String? ?? '',
+      title: json['title'] as String?,
+      clicks: json['clicks'] as int? ?? 0,
+      postNumber: json['post_number'] as int?,
+      topicId: topicId ?? topic?.id,
+      topic: topic,
+    );
+  }
+}
+
+/// 总结页 - 用户统计（用于最多回复/点赞等）
+class SummaryUserWithCount {
+  final int id;
+  final String username;
+  final String? name;
+  final String? avatarTemplate;
+  final int count;
+
+  const SummaryUserWithCount({
+    required this.id,
+    required this.username,
+    this.name,
+    this.avatarTemplate,
+    this.count = 0,
+  });
+
+  factory SummaryUserWithCount.fromJson(Map<String, dynamic> json) {
+    return SummaryUserWithCount(
+      id: json['id'] as int? ?? 0,
+      username: json['username'] as String? ?? '',
+      name: json['name'] as String?,
+      avatarTemplate: json['avatar_template'] as String?,
+      count: json['count'] as int? ?? 0,
+    );
+  }
+
+  String getAvatarUrl({int size = 120}) {
+    if (avatarTemplate == null) return '';
+    final template = avatarTemplate!.replaceAll('{size}', '$size');
+    if (template.startsWith('http')) return template;
+    if (template.startsWith('/')) return 'https://linux.do$template';
+    return 'https://linux.do/$template';
+  }
+}
+
+/// 总结页 - 热门类别
+class SummaryCategory {
+  final int id;
+  final String name;
+  final String? color;
+  final String? slug;
+  final int topicCount;
+  final int postCount;
+
+  const SummaryCategory({
+    required this.id,
+    required this.name,
+    this.color,
+    this.slug,
+    this.topicCount = 0,
+    this.postCount = 0,
+  });
+
+  factory SummaryCategory.fromJson(Map<String, dynamic> json) {
+    return SummaryCategory(
+      id: json['id'] as int? ?? 0,
+      name: json['name'] as String? ?? '',
+      color: json['color'] as String?,
+      slug: json['slug'] as String?,
+      topicCount: json['topic_count'] as int? ?? 0,
+      postCount: json['post_count'] as int? ?? 0,
+    );
   }
 }
 

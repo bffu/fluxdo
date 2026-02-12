@@ -58,6 +58,8 @@ abstract class _DiscourseServiceBase {
 
   UserSummary? get _cachedUserSummary;
   set _cachedUserSummary(UserSummary? value);
+  String? get _cachedUserSummaryUsername;
+  set _cachedUserSummaryUsername(String? value);
   DateTime? get _userSummaryCacheTime;
   set _userSummaryCacheTime(DateTime? value);
 
@@ -117,6 +119,8 @@ class DiscourseService extends _DiscourseServiceBase
 
   @override
   UserSummary? _cachedUserSummary;
+  @override
+  String? _cachedUserSummaryUsername;
   @override
   DateTime? _userSummaryCacheTime;
 

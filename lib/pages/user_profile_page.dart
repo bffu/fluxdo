@@ -21,10 +21,13 @@ import '../widgets/content/discourse_html_content/discourse_html_content_widget.
 import '../widgets/content/collapsed_html_content.dart';
 import '../widgets/post/reply_sheet.dart';
 import '../widgets/user/user_profile_skeleton.dart';
+import '../widgets/badge/badge_ui_utils.dart';
+import '../models/badge.dart' as badge_model;
 import 'topic_detail_page/topic_detail_page.dart';
 import 'search_page.dart';
 import 'follow_list_page.dart';
 import 'image_viewer_page.dart';
+import 'badge_page.dart';
 
 /// 用户个人页
 class UserProfilePage extends ConsumerStatefulWidget {
@@ -49,30 +52,32 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
   bool _isFollowed = false;
   bool _isFollowLoading = false;
 
-  // 各 tab 的数据
-  final Map<int, List<UserAction>> _actionsCache = {};
-  final Map<int, bool> _hasMoreCache = {};
-  final Map<int, bool> _loadingCache = {};
+  // 各 tab 的数据（key 为 filter 字符串）
+  final Map<String, List<UserAction>> _actionsCache = {};
+  final Map<String, bool> _hasMoreCache = {};
+  final Map<String, bool> _loadingCache = {};
 
   // 回应列表单独缓存
   List<UserReaction>? _reactionsCache;
   bool _reactionsHasMore = true;
   bool _reactionsLoading = false;
 
-  // tab 对应的 filter: null=全部, 4=话题, 5=回复, 1=点赞, -2=回应(特殊标记)
-  static const List<int?> _tabFilters = [null, 4, 5, 1, -2];
+  // tab 对应的 filter: summary=总结, 4,5=全部(话题+回复), 4=话题, 5=回复, 1=点赞, reactions=回应
+  static const List<String> _tabFilters = ['summary', '4,5', '4', '5', '1', 'reactions'];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _tabController.addListener(_onTabChanged);
     // 预先为所有 tab 设置 loading 状态，避免切换时闪现空状态
     for (final filter in _tabFilters) {
-      if (filter == -2) {
+      if (filter == 'summary') {
+        // 总结 tab 数据随 _summary 加载，无需单独标记
+      } else if (filter == 'reactions') {
         _reactionsLoading = true;
       } else {
-        _loadingCache[filter ?? -1] = true;
+        _loadingCache[filter] = true;
       }
     }
     _loadUser();
@@ -88,7 +93,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
   void _onTabChanged() {
     if (!_tabController.indexIsChanging) {
       final filter = _tabFilters[_tabController.index];
-      if (filter == -2) {
+      if (filter == 'summary') {
+        // 总结 tab - 数据随用户信息一起加载
+      } else if (filter == 'reactions') {
         // 回应列表
         if (_reactionsCache == null) {
           _loadReactions();
@@ -116,7 +123,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
           _isFollowed = user.isFollowed ?? false;
           _isLoading = false;
         });
-        _loadActions(null); // 加载全部
+        // 总结 tab 数据已从 _summary 获取，无需额外加载
       }
     } catch (e) {
       if (mounted) {
@@ -391,16 +398,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
     expectedPageSize: 20,
   );
 
-  Future<void> _loadActions(int? filter, {bool loadMore = false}) async {
-    final key = filter ?? -1;
+  Future<void> _loadActions(String filter, {bool loadMore = false}) async {
     // 如果已有数据且正在加载，跳过（防止重复加载更多）
-    if (_loadingCache[key] == true && _actionsCache.containsKey(key)) return;
+    if (_loadingCache[filter] == true && _actionsCache.containsKey(filter)) return;
 
-    setState(() => _loadingCache[key] = true);
+    setState(() => _loadingCache[filter] = true);
 
     try {
       final service = ref.read(discourseServiceProvider);
-      final offset = loadMore ? (_actionsCache[key]?.length ?? 0) : 0;
+      final offset = loadMore ? (_actionsCache[filter]?.length ?? 0) : 0;
       final response = await service.getUserActions(
         widget.username,
         filter: filter,
@@ -410,26 +416,26 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
       if (mounted) {
         setState(() {
           if (loadMore) {
-            final currentState = PaginationState<UserAction>(items: _actionsCache[key] ?? []);
+            final currentState = PaginationState<UserAction>(items: _actionsCache[filter] ?? []);
             final result = _actionsPaginationHelper.processLoadMore(
               currentState,
               PaginationResult(items: response.actions, expectedPageSize: 30),
             );
-            _actionsCache[key] = result.items;
-            _hasMoreCache[key] = result.hasMore;
+            _actionsCache[filter] = result.items;
+            _hasMoreCache[filter] = result.hasMore;
           } else {
             final result = _actionsPaginationHelper.processRefresh(
               PaginationResult(items: response.actions, expectedPageSize: 30),
             );
-            _actionsCache[key] = result.items;
-            _hasMoreCache[key] = result.hasMore;
+            _actionsCache[filter] = result.items;
+            _hasMoreCache[filter] = result.hasMore;
           }
-          _loadingCache[key] = false;
+          _loadingCache[filter] = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _loadingCache[key] = false);
+        setState(() => _loadingCache[filter] = false);
       }
     }
   }
@@ -595,7 +601,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
             indicatorSize: TabBarIndicatorSize.label,
             dividerColor: Colors.transparent,
             tabs: const [
-              Tab(height: 36, text: '全部'),
+              Tab(height: 36, text: '总结'),
+              Tab(height: 36, text: '动态'),
               Tab(height: 36, text: '话题'),
               Tab(height: 36, text: '回复'),
               Tab(height: 36, text: '赞'),
@@ -1063,16 +1070,19 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
     );
   }
 
-  Widget _buildActionList(int? filter) {
+  Widget _buildActionList(String filter) {
+    // 总结 tab
+    if (filter == 'summary') {
+      return _buildSummaryTab();
+    }
     // 回应列表使用单独的逻辑
-    if (filter == -2) {
+    if (filter == 'reactions') {
       return _buildReactionList();
     }
 
-    final key = filter ?? -1;
-    final actions = _actionsCache[key];
-    final isLoading = _loadingCache[key] == true;
-    final hasMore = _hasMoreCache[key] ?? true;
+    final actions = _actionsCache[filter];
+    final isLoading = _loadingCache[filter] == true;
+    final hasMore = _hasMoreCache[filter] ?? true;
 
     // 优先检查 loading 状态
     if (isLoading && actions == null) {
@@ -1119,6 +1129,473 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildSummaryTab() {
+    if (_summary == null) {
+      return const UserActionListSkeleton();
+    }
+
+    final theme = Theme.of(context);
+    final summary = _summary!;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      children: [
+        // 热门话题
+        if (summary.topics.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.article_rounded, '热门话题'),
+          const SizedBox(height: 8),
+          ...summary.topics.map((topic) => _buildSummaryTopicItem(theme, topic)),
+          const SizedBox(height: 20),
+        ],
+
+        // 热门回复
+        if (summary.replies.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.chat_bubble_rounded, '热门回复'),
+          const SizedBox(height: 8),
+          ...summary.replies.map((reply) => _buildSummaryReplyItem(theme, reply)),
+          const SizedBox(height: 20),
+        ],
+
+        // 热门链接
+        if (summary.links.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.link_rounded, '热门链接'),
+          const SizedBox(height: 8),
+          ...summary.links.map((link) => _buildSummaryLinkItem(theme, link)),
+          const SizedBox(height: 20),
+        ],
+
+        // 最多回复至
+        if (summary.mostRepliedToUsers.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.reply_rounded, '最多回复至'),
+          const SizedBox(height: 8),
+          _buildUserChips(theme, summary.mostRepliedToUsers),
+          const SizedBox(height: 20),
+        ],
+
+        // 被谁赞的最多
+        if (summary.mostLikedByUsers.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.favorite_rounded, '被谁赞的最多'),
+          const SizedBox(height: 8),
+          _buildUserChips(theme, summary.mostLikedByUsers),
+          const SizedBox(height: 20),
+        ],
+
+        // 赞最多
+        if (summary.mostLikedUsers.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.thumb_up_rounded, '赞最多'),
+          const SizedBox(height: 8),
+          _buildUserChips(theme, summary.mostLikedUsers),
+          const SizedBox(height: 20),
+        ],
+
+        // 热门类别
+        if (summary.topCategories.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.category_rounded, '热门类别'),
+          const SizedBox(height: 8),
+          ...summary.topCategories.map((cat) => _buildSummaryCategoryItem(theme, cat)),
+          const SizedBox(height: 20),
+        ],
+
+        // 热门徽章
+        if (summary.badges.isNotEmpty) ...[
+          _buildSectionHeader(theme, Icons.military_tech_rounded, '热门徽章'),
+          const SizedBox(height: 8),
+          _buildBadgeChips(theme, summary.badges),
+          const SizedBox(height: 20),
+        ],
+
+        // 若所有列表都为空
+        if (summary.topics.isEmpty &&
+            summary.replies.isEmpty &&
+            summary.links.isEmpty &&
+            summary.mostRepliedToUsers.isEmpty &&
+            summary.mostLikedByUsers.isEmpty &&
+            summary.mostLikedUsers.isEmpty &&
+            summary.topCategories.isEmpty &&
+            summary.badges.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 80),
+              child: Column(
+                children: [
+                  Icon(Icons.summarize_outlined, size: 48, color: Colors.grey[400]),
+                  const SizedBox(height: 8),
+                  Text('暂无总结数据', style: TextStyle(color: Colors.grey[600])),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(ThemeData theme, IconData icon, String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryTopicItem(ThemeData theme, SummaryTopic topic) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => TopicDetailPage(topicId: topic.id),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  topic.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (topic.likeCount > 0) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.favorite_rounded, size: 14, color: theme.colorScheme.outline),
+                const SizedBox(width: 2),
+                Text(
+                  '${topic.likeCount}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryReplyItem(ThemeData theme, SummaryReply reply) {
+    final topic = reply.topic;
+    final targetTopicId = topic?.id ?? reply.topicId;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: targetTopicId != null
+            ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TopicDetailPage(
+                      topicId: targetTopicId,
+                      scrollToPostNumber: reply.postNumber,
+                    ),
+                  ),
+                )
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  topic?.title ?? '话题 #$targetTopicId',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (reply.likeCount > 0) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.favorite_rounded, size: 14, color: theme.colorScheme.outline),
+                const SizedBox(width: 2),
+                Text(
+                  '${reply.likeCount}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryLinkItem(ThemeData theme, SummaryLink link) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          if (link.topic != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TopicDetailPage(
+                  topicId: link.topic!.id,
+                  scrollToPostNumber: link.postNumber,
+                ),
+              ),
+            );
+          } else {
+            launchUrl(Uri.parse(link.url));
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Icon(Icons.open_in_new_rounded, size: 16, color: theme.colorScheme.outline),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      link.title ?? link.url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    if (link.topic != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        link.topic!.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (link.clicks > 0) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '${link.clicks} 次点击',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserChips(ThemeData theme, List<SummaryUserWithCount> users) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: users.map((user) => InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UserProfilePage(username: user.username),
+          ),
+        ),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SmartAvatar(
+                imageUrl: user.getAvatarUrl(size: 48),
+                radius: 12,
+                fallbackText: user.username,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                user.name?.isNotEmpty == true ? user.name! : user.username,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${user.count}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      )).toList(),
+    );
+  }
+
+  Widget _buildSummaryCategoryItem(ThemeData theme, SummaryCategory cat) {
+    final color = cat.color != null
+        ? Color(int.parse('FF${cat.color}', radix: 16))
+        : theme.colorScheme.primary;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                cat.name,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Text(
+              '${cat.topicCount} 话题',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '${cat.postCount} 回复',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBadgeChips(ThemeData theme, List<badge_model.Badge> badges) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: badges.map((badge) {
+        final badgeType = badge.badgeType;
+        final color = BadgeUIUtils.getBadgeColor(context, badgeType);
+
+        return GestureDetector(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BadgePage(badgeId: badge.id),
+            ),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              gradient: BadgeUIUtils.getBadgeGradient(context, badgeType),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: color.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  BadgeUIUtils.getBadgeIcon(badgeType),
+                  size: 14,
+                  color: color,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  badge.name,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

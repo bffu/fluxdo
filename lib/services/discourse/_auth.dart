@@ -166,6 +166,7 @@ mixin _AuthMixin on _DiscourseServiceBase {
     _tToken = null;
     _username = null;
     _cachedUserSummary = null;
+    _cachedUserSummaryUsername = null;
     _userSummaryCacheTime = null;
     await _storage.delete(key: DiscourseService._usernameKey);
     currentUserNotifier.value = null;
