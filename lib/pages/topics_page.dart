@@ -14,6 +14,7 @@ import '../providers/topic_sort_provider.dart';
 import 'webview_login_page.dart';
 import 'topic_detail_page/topic_detail_page.dart';
 import 'search_page.dart';
+import '../models/search_filter.dart';
 import '../widgets/common/notification_icon_button.dart';
 import '../widgets/topic/topic_list_skeleton.dart';
 import '../widgets/topic/sort_and_tags_bar.dart';
@@ -63,8 +64,6 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
   int _tabLength = 1; // 初始只有"全部"
   int _currentTabIndex = 0;
   final Map<int?, GlobalKey<_TopicListState>> _listKeys = {};
-  /// 本地通知级别覆盖（categoryId -> level），用于设置后立即回显
-  final Map<int, int> _notificationLevelOverrides = {};
 
   final ScrollController _outerScrollController = ScrollController();
 
@@ -91,6 +90,7 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     setState(() {
       _currentTabIndex = _tabController.index;
     });
+    ref.read(currentTabCategoryIdProvider.notifier).state = _currentCategoryId();
   }
 
   /// 检测 pinnedCategories 变化，重建 TabController
@@ -258,29 +258,35 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
     }
 
     if (category == null || !isLoggedIn) return null;
-    // 优先使用本地覆盖值，否则取服务端返回值
-    final effectiveLevel = _notificationLevelOverrides[category.id]
-        ?? category.notificationLevel;
+    // 优先使用共享覆盖值，否则取服务端返回值
+    final overrides = ref.watch(categoryNotificationOverridesProvider);
+    final effectiveLevel = overrides[category.id] ?? category.notificationLevel;
     final level = CategoryNotificationLevel.fromValue(effectiveLevel);
     return CategoryNotificationButton(
       level: level,
       onChanged: (newLevel) async {
         final oldLevel = effectiveLevel;
         // 乐观更新
-        setState(() => _notificationLevelOverrides[category.id] = newLevel.value);
+        ref.read(categoryNotificationOverridesProvider.notifier).state = {
+          ...ref.read(categoryNotificationOverridesProvider),
+          category.id: newLevel.value,
+        };
         try {
           final service = ref.read(discourseServiceProvider);
           await service.setCategoryNotificationLevel(category.id, newLevel.value);
         } catch (_) {
           // 失败时回退
           if (mounted) {
-            setState(() {
-              if (oldLevel != null) {
-                _notificationLevelOverrides[category.id] = oldLevel;
-              } else {
-                _notificationLevelOverrides.remove(category.id);
-              }
-            });
+            final current = ref.read(categoryNotificationOverridesProvider);
+            if (oldLevel != null) {
+              ref.read(categoryNotificationOverridesProvider.notifier).state = {
+                ...current,
+                category.id: oldLevel,
+              };
+            } else {
+              ref.read(categoryNotificationOverridesProvider.notifier).state =
+                  Map.from(current)..remove(category.id);
+            }
           }
         }
       },
@@ -390,10 +396,25 @@ class _TopicsPageState extends ConsumerState<TopicsPage> with TickerProviderStat
                 }
               },
               onCategoryManager: _openCategoryManager,
-              onSearch: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SearchPage()),
-              ),
+              onSearch: () {
+                SearchFilter? filter;
+                if (currentCategory != null) {
+                  String? parentSlug;
+                  if (currentCategory.parentCategoryId != null) {
+                    parentSlug = categoryMapAsync.value?[currentCategory.parentCategoryId]?.slug;
+                  }
+                  filter = SearchFilter(
+                    categoryId: currentCategory.id,
+                    categorySlug: currentCategory.slug,
+                    categoryName: currentCategory.name,
+                    parentCategorySlug: parentSlug,
+                  );
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => SearchPage(initialFilter: filter)),
+                );
+              },
               onDebugTopicId: () => _showTopicIdDialog(context),
               trailing: _buildTrailing(currentCategory, isLoggedIn, currentSort),
             ),

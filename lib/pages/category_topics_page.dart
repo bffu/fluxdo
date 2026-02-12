@@ -15,6 +15,8 @@ import '../widgets/common/error_view.dart';
 import '../widgets/layout/master_detail_layout.dart';
 import 'topic_detail_page/topic_detail_page.dart';
 import 'search_page.dart';
+import '../models/search_filter.dart';
+import 'create_topic_page.dart';
 
 /// 分类话题列表页面（独立页面，不影响首页筛选）
 class CategoryTopicsPage extends ConsumerStatefulWidget {
@@ -39,7 +41,6 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
   // 本地排序和标签状态（独立于首页）
   TopicListFilter _currentSort = TopicListFilter.latest;
   List<String> _selectedTags = [];
-  late CategoryNotificationLevel _notificationLevel;
 
   static final _paginationHelper = PaginationHelpers.forTopics<Topic>(
     keyExtractor: (topic) => topic.id,
@@ -48,7 +49,6 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
   @override
   void initState() {
     super.initState();
-    _notificationLevel = CategoryNotificationLevel.fromValue(widget.category.notificationLevel);
     _scrollController.addListener(_onScroll);
     _resolveParentSlug();
     _loadTopics();
@@ -193,14 +193,30 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
   }
 
   Future<void> _setCategoryNotificationLevel(CategoryNotificationLevel level) async {
-    final oldLevel = _notificationLevel;
-    setState(() => _notificationLevel = level);
+    final overrides = ref.read(categoryNotificationOverridesProvider);
+    final oldLevel = overrides[widget.category.id] ?? widget.category.notificationLevel;
+    // 乐观更新
+    ref.read(categoryNotificationOverridesProvider.notifier).state = {
+      ...overrides,
+      widget.category.id: level.value,
+    };
     try {
       final service = ref.read(discourseServiceProvider);
       await service.setCategoryNotificationLevel(widget.category.id, level.value);
     } catch (_) {
       // 失败时回退
-      if (mounted) setState(() => _notificationLevel = oldLevel);
+      if (mounted) {
+        final current = ref.read(categoryNotificationOverridesProvider);
+        if (oldLevel != null) {
+          ref.read(categoryNotificationOverridesProvider.notifier).state = {
+            ...current,
+            widget.category.id: oldLevel,
+          };
+        } else {
+          ref.read(categoryNotificationOverridesProvider.notifier).state =
+              Map.from(current)..remove(widget.category.id);
+        }
+      }
     }
   }
 
@@ -227,6 +243,19 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
     if (result != null && mounted) {
       setState(() => _selectedTags = result);
       _loadTopics();
+    }
+  }
+
+  Future<void> _createTopic() async {
+    final topicId = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(builder: (_) => CreateTopicPage(
+        initialCategoryId: widget.category.id,
+        initialTags: _selectedTags.isNotEmpty ? _selectedTags : null,
+      )),
+    );
+    if (topicId != null && mounted) {
+      _silentRefresh();
     }
   }
 
@@ -273,7 +302,14 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
             icon: const Icon(Icons.search),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const SearchPage()),
+              MaterialPageRoute(builder: (_) => SearchPage(
+                initialFilter: SearchFilter(
+                  categoryId: widget.category.id,
+                  categorySlug: widget.category.slug,
+                  categoryName: widget.category.name,
+                  parentCategorySlug: _parentSlug,
+                ),
+              )),
             ),
             tooltip: '搜索',
           ),
@@ -290,9 +326,21 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
             onTagRemoved: _removeTag,
             onAddTag: _openTagSelection,
             trailing: isLoggedIn
-                ? CategoryNotificationButton(
-                    level: _notificationLevel,
-                    onChanged: _setCategoryNotificationLevel,
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _CreateTopicButton(onPressed: _createTopic),
+                      const SizedBox(width: 6),
+                      Builder(builder: (context) {
+                        final overrides = ref.watch(categoryNotificationOverridesProvider);
+                        final effectiveLevel = overrides[widget.category.id]
+                            ?? widget.category.notificationLevel;
+                        return CategoryNotificationButton(
+                          level: CategoryNotificationLevel.fromValue(effectiveLevel),
+                          onChanged: _setCategoryNotificationLevel,
+                        );
+                      }),
+                    ],
                   )
                 : null,
           ),
@@ -305,7 +353,9 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
 
   Widget _buildBody(int? selectedTopicId) {
     if (_isLoading) {
-      return const TopicListSkeleton();
+      return const TopicListSkeleton(
+        padding: EdgeInsets.all(12),
+      );
     }
 
     if (_error != null) {
@@ -332,6 +382,7 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
       onRefresh: _loadTopics,
       child: ListView.builder(
         controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(12),
         itemCount: _topics.length + 1,
         itemBuilder: (context, index) {
@@ -357,6 +408,49 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
             enableLongPress: enableLongPress,
           );
         },
+      ),
+    );
+  }
+}
+
+/// 创建话题快捷按钮（紧凑 chip 样式）
+class _CreateTopicButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _CreateTopicButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bgColor = theme.colorScheme.primaryContainer.withValues(alpha: 0.3);
+    final fgColor = theme.colorScheme.primary;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.edit_outlined, size: 14, color: fgColor),
+              const SizedBox(width: 4),
+              Text(
+                '发帖',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: fgColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

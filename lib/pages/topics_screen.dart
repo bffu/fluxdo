@@ -95,9 +95,14 @@ class _TopicsScreenState extends ConsumerState<TopicsScreen> {
   }
 
   Future<void> _createTopic(BuildContext context, WidgetRef ref) async {
+    final categoryId = ref.read(currentTabCategoryIdProvider);
+    final tags = ref.read(tabTagsProvider(categoryId));
     final topicId = await Navigator.push<int>(
       context,
-      MaterialPageRoute(builder: (_) => const CreateTopicPage()),
+      MaterialPageRoute(builder: (_) => CreateTopicPage(
+        initialCategoryId: categoryId,
+        initialTags: tags.isNotEmpty ? tags : null,
+      )),
     );
     if (topicId != null && context.mounted) {
       // 刷新当前排序模式的列表

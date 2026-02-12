@@ -13,8 +13,9 @@ import 'user_profile_page.dart';
 /// 搜索页面
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialQuery;
+  final SearchFilter? initialFilter;
 
-  const SearchPage({super.key, this.initialQuery});
+  const SearchPage({super.key, this.initialQuery, this.initialFilter});
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -41,11 +42,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   bool _isClearingRecentSearches = false;
 
   // 高级过滤器
-  SearchFilter _filter = const SearchFilter();
+  late SearchFilter _filter;
 
   @override
   void initState() {
     super.initState();
+    _filter = widget.initialFilter ?? const SearchFilter();
     if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
       _searchController.text = widget.initialQuery!;
       _currentQuery = widget.initialQuery!;
@@ -408,9 +410,25 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
         ],
       ),
-      body: _currentQuery.isEmpty
-          ? _buildEmptyState(theme)
-          : _buildSearchResults(theme),
+      body: Column(
+        children: [
+          // 已激活的过滤条件（始终显示，便于查看和取消）
+          if (_filter.isNotEmpty)
+            ActiveSearchFiltersBar(
+              filter: _filter,
+              onClearCategory: _clearCategory,
+              onRemoveTag: _removeTag,
+              onClearStatus: _clearStatus,
+              onClearDateRange: _clearDateRange,
+              onClearAll: _clearAllFilters,
+            ),
+          Expanded(
+            child: _currentQuery.isEmpty
+                ? _buildEmptyState(theme)
+                : _buildSearchResults(theme),
+          ),
+        ],
+      ),
     );
   }
 
@@ -546,16 +564,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     return Column(
       children: [
-        // 已激活的过滤条件
-        if (_filter.isNotEmpty)
-          ActiveSearchFiltersBar(
-            filter: _filter,
-            onClearCategory: _clearCategory,
-            onRemoveTag: _removeTag,
-            onClearStatus: _clearStatus,
-            onClearDateRange: _clearDateRange,
-            onClearAll: _clearAllFilters,
-          ),
         // 排序选项
         if (_allPosts.isNotEmpty || _allUsers.isNotEmpty)
           Container(

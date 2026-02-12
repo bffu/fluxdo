@@ -8,3 +8,6 @@ final topicSortProvider = StateProvider<TopicListFilter>((ref) => TopicListFilte
 /// 每个 tab 独立的标签筛选（categoryId -> tags）
 /// null 表示"全部"tab
 final tabTagsProvider = StateProvider.family<List<String>, int?>((ref, categoryId) => []);
+
+/// 当前选中 tab 对应的分类 ID（null 表示"全部"tab）
+final currentTabCategoryIdProvider = StateProvider<int?>((ref) => null);

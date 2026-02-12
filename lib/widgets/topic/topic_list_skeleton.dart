@@ -3,13 +3,18 @@ import '../common/skeleton.dart';
 
 /// 话题列表骨架屏
 class TopicListSkeleton extends StatelessWidget {
-  const TopicListSkeleton({super.key});
+  final EdgeInsetsGeometry padding;
+
+  const TopicListSkeleton({
+    super.key,
+    this.padding = const EdgeInsets.only(top: 8, bottom: 12),
+  });
 
   @override
   Widget build(BuildContext context) {
     return Skeleton(
       child: ListView.builder(
-        padding: const EdgeInsets.only(top: 8, bottom: 12),
+        padding: padding,
         itemCount: 8,
         itemBuilder: (context, index) => const _TopicCardSkeleton(),
       ),

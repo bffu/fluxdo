@@ -12,7 +12,14 @@ import 'package:fluxdo/services/preloaded_data_service.dart';
 import 'package:fluxdo/widgets/topic/topic_editor_helpers.dart';
 
 class CreateTopicPage extends ConsumerStatefulWidget {
-  const CreateTopicPage({super.key});
+  final int? initialCategoryId;
+  final List<String>? initialTags;
+
+  const CreateTopicPage({
+    super.key,
+    this.initialCategoryId,
+    this.initialTags,
+  });
 
   @override
   ConsumerState<CreateTopicPage> createState() => _CreateTopicPageState();
@@ -178,8 +185,14 @@ class _CreateTopicPageState extends ConsumerState<CreateTopicPage> {
   }
 
   void _applyCurrentFilter() async {
-    // 使用站点默认分类
-    int? targetCategoryId = await PreloadedDataService().getDefaultComposerCategoryId();
+    // 优先使用传入的分类，否则使用站点默认分类
+    int? targetCategoryId = widget.initialCategoryId;
+    targetCategoryId ??= await PreloadedDataService().getDefaultComposerCategoryId();
+
+    // 应用传入的标签
+    if (widget.initialTags != null && widget.initialTags!.isNotEmpty && _selectedTags.isEmpty) {
+      setState(() => _selectedTags = List.from(widget.initialTags!));
+    }
 
     if (targetCategoryId != null && mounted) {
       // 监听 categories 加载完成

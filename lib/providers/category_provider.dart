@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// ignore: depend_on_referenced_packages
+import 'package:flutter_riverpod/legacy.dart';
 import '../models/category.dart';
 import '../models/topic.dart';
 import 'core_providers.dart';
@@ -37,6 +39,10 @@ final categoryMapProvider = Provider<AsyncValue<Map<int, Category>>>((ref) {
     return {for (var c in categories) c.id: c};
   });
 });
+
+/// 分类通知级别本地覆盖（categoryId -> level）
+/// 用于在 API 成功后立即同步各页面的显示状态
+final categoryNotificationOverridesProvider = StateProvider<Map<int, int>>((ref) => {});
 
 /// 热门标签列表 Provider
 final tagsProvider = FutureProvider<List<String>>((ref) async {
