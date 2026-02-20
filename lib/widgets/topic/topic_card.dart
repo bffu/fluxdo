@@ -14,7 +14,7 @@ import '../../utils/time_utils.dart';
 import '../../utils/number_utils.dart';
 import '../common/emoji_text.dart';
 
-/// 璇濋鍗＄墖缁勪欢
+/// 话题卡片组件
 class TopicCard extends ConsumerWidget {
   final Topic topic;
   final VoidCallback? onTap;
@@ -35,27 +35,27 @@ class TopicCard extends ConsumerWidget {
     final isUnread = topic.unseen || topic.unread > 0;
     final localFavoriteIds = ref.watch(localFavoriteTopicIdsProvider);
     final isLocalFavorite = localFavoriteIds.contains(topic.id);
-    // 鍏ㄩ儴璇诲畬锛氳繘鍏ヨ繃璇濋涓旀病鏈夋湭璇诲笘瀛?
+    // 全部读完：进入过话题且没有未读帖子
     final isFullyRead = !topic.unseen && topic.unread == 0 && topic.lastReadPostNumber != null;
 
-    // 鑾峰彇鍒嗙被淇℃伅
+    // 获取分类信息
     final categoryMap = ref.watch(categoryMapProvider).value;
     final categoryId = int.tryParse(topic.categoryId);
     final category = categoryMap?[categoryId];
     
-    // 鍥炬爣閫昏緫浼樺厛绾э細
-    // 1. 鏈骇 FA Icon
-    // 2. 鏈骇 Logo
-    // 3. 鐖剁骇 FA Icon
-    // 4. 鐖剁骇 Logo
+    // 图标逻辑优先级：
+    // 1. 本级 FA Icon
+    // 2. 本级 Logo
+    // 3. 父级 FA Icon
+    // 4. 父级 Logo
     
-    // 妫€鏌?FA Icon
+    // 检查 FA Icon
     IconData? faIcon = FontAwesomeHelper.getIcon(category?.icon);
     
-    // 妫€鏌?Logo
+    // 检查 Logo
     String? logoUrl = category?.uploadedLogo;
 
-    // 濡傛灉鏈骇娌℃湁鍥炬爣锛屽皾璇曠埗绾?
+    // 如果本级没有图标，尝试父级
     if (faIcon == null && (logoUrl == null || logoUrl.isEmpty) && category?.parentCategoryId != null) {
       final parent = categoryMap?[category!.parentCategoryId];
       faIcon = FontAwesomeHelper.getIcon(parent?.icon);
@@ -88,11 +88,11 @@ class TopicCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. 鏍囬琛?
+                // 1. 标题行
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 鏂拌瘽棰樿摑鐐?
+                    // 新话题蓝点
                     if (topic.unseen)
                       Container(
                         margin: const EdgeInsets.only(right: 8, top: 6),
@@ -177,9 +177,9 @@ class TopicCard extends ConsumerWidget {
                             : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                       ),
                       splashRadius: 20,
-                      tooltip: isLocalFavorite ? '鍙栨秷鏈湴鏀惰棌' : '鍔犲叆鏈湴鏀惰棌',
+                      tooltip: isLocalFavorite ? '取消本地收藏' : '加入本地收藏',
                     ),
-                    // 鏈鏁伴噺寰界珷
+                    // 未读数量徽章
                     if (topic.unread > 0)
                       Container(
                         margin: const EdgeInsets.only(left: 8),
@@ -201,7 +201,7 @@ class TopicCard extends ConsumerWidget {
                 
                 const SizedBox(height: 10),
                 
-                // 2. 鍒嗙被涓庢爣绛捐
+                // 2. 分类与标签行
                 if (category != null || topic.tags.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
@@ -210,7 +210,7 @@ class TopicCard extends ConsumerWidget {
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        // 鍒嗙被 Badge
+                        // 分类 Badge
                         if (category != null)
                           CategoryBadge(
                             category: category,
@@ -218,7 +218,7 @@ class TopicCard extends ConsumerWidget {
                             logoUrl: logoUrl,
                           ),
                         
-                        // 鏍囩 Badges
+                        // 标签 Badges
                         ...topic.tags.map(
                           (tag) => TagBadge(
                             name: tag.name,
@@ -230,10 +230,10 @@ class TopicCard extends ConsumerWidget {
 
                 const SizedBox(height: 14),
 
-                // 3. 搴曢儴淇℃伅鏍?(澶村儚 + 缁熻)
+                // 3. 底部信息栏 (头像 + 统计)
                 Row(
                   children: [
-                    // 宸︿晶锛氬弬涓庤€呭ご鍍?
+                    // 左侧：参与者头像
                     if (topic.posters.isNotEmpty)
                       _buildStackedAvatars(context, topic.posters)
                     else if (topic.lastPosterUsername != null)
@@ -251,7 +251,7 @@ class TopicCard extends ConsumerWidget {
 
                     const Spacer(),
 
-                    // 鍙充晶锛氱粺璁℃暟鎹?
+                    // 右侧：统计数据
                     _buildStat(context, Icons.chat_bubble_outline_rounded, (topic.postsCount - 1).clamp(0, 999999)),
                     const SizedBox(width: 12),
 
@@ -333,7 +333,7 @@ class TopicCard extends ConsumerWidget {
 
 }
 
-/// 绱у噾鍨嬭瘽棰樺崱鐗?- 鐢ㄤ簬缃《璇濋
+/// 紧凑型话题卡片 - 用于置顶话题
 class CompactTopicCard extends ConsumerWidget {
   final Topic topic;
   final VoidCallback? onTap;
@@ -354,13 +354,13 @@ class CompactTopicCard extends ConsumerWidget {
     final isUnread = topic.unseen || topic.unread > 0;
     final localFavoriteIds = ref.watch(localFavoriteTopicIdsProvider);
     final isLocalFavorite = localFavoriteIds.contains(topic.id);
-
-    // 鑾峰彇鍒嗙被淇℃伅
+    
+    // 获取分类信息
     final categoryMap = ref.watch(categoryMapProvider).value;
     final categoryId = int.tryParse(topic.categoryId);
     final category = categoryMap?[categoryId];
     
-    // 鍥炬爣閫昏緫
+    // 图标逻辑
     IconData? faIcon = FontAwesomeHelper.getIcon(category?.icon);
     String? logoUrl = category?.uploadedLogo;
 
@@ -393,7 +393,7 @@ class CompactTopicCard extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              // 1. 缃《鍥炬爣
+              // 1. 置顶图标
               Icon(
                 Icons.push_pin_rounded,
                 size: 14,
@@ -401,7 +401,7 @@ class CompactTopicCard extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
               
-              // 2. 鍒嗙被鍥炬爣/Dot
+              // 2. 分类图标/Dot
               if (category != null) ...[
                 if (faIcon != null)
                   FaIcon(
@@ -428,7 +428,7 @@ class CompactTopicCard extends ConsumerWidget {
                 const SizedBox(width: 8),
               ],
 
-              // 3. 鏍囬
+              // 3. 标题
               Expanded(
                 child: Text.rich(
                   TextSpan(
@@ -500,10 +500,9 @@ class CompactTopicCard extends ConsumerWidget {
                 ),
                 tooltip: isLocalFavorite ? '取消本地收藏' : '加入本地收藏',
               ),
-
               const SizedBox(width: 4),
 
-              // 4. 鏈鏁版垨绠€鍗曠姸鎬?
+              // 4. 未读数或简单状态
               if (topic.unread > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -560,4 +559,3 @@ class CompactTopicCard extends ConsumerWidget {
     return Colors.grey;
   }
 }
-
