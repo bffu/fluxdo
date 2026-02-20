@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
@@ -16,6 +16,7 @@ import 'trust_level_requirements_page.dart';
 import 'about_page.dart';
 import 'network_settings_page/network_settings_page.dart';
 import 'preferences_page.dart';
+import 'local_favorites_page.dart';
 import '../widgets/common/loading_spinner.dart';
 import '../widgets/common/loading_dialog.dart';
 import '../widgets/common/notification_icon_button.dart';
@@ -28,7 +29,7 @@ import '../widgets/ldc_balance_card.dart';
 import '../providers/ldc_providers.dart';
 import '../utils/number_utils.dart';
 
-/// 个人页面
+/// 涓汉椤甸潰
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
 
@@ -46,13 +47,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
     
-    // 进入页面后静默刷新用户数据（不触发 loading 状态）
+    // 杩涘叆椤甸潰鍚庨潤榛樺埛鏂扮敤鎴锋暟鎹紙涓嶈Е鍙?loading 鐘舵€侊級
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final current = ref.read(currentUserProvider).value;
         if (current != null) {
-          // 使用 refresh 在后台更新数据，不会触发 loading 状态，避免 UI 闪烁
-          // 忽略返回值，因为我们只是触发后台刷新
+          // 浣跨敤 refresh 鍦ㄥ悗鍙版洿鏂版暟鎹紝涓嶄細瑙﹀彂 loading 鐘舵€侊紝閬垮厤 UI 闂儊
+          // 蹇界暐杩斿洖鍊硷紝鍥犱负鎴戜滑鍙槸瑙﹀彂鍚庡彴鍒锋柊
           ref.read(currentUserProvider.notifier).refreshSilently().ignore();
           ref.refresh(userSummaryProvider.future).ignore();
         }
@@ -69,8 +70,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     
-    // 当滚动超过一定距离（例如头像区域的高度）时显示标题
-    // 头像(72) + padding(大概20)
+    // 褰撴粴鍔ㄨ秴杩囦竴瀹氳窛绂伙紙渚嬪澶村儚鍖哄煙鐨勯珮搴︼級鏃舵樉绀烘爣棰?
+    // 澶村儚(72) + padding(澶ф20)
     final show = _scrollController.offset > 80;
     if (show != _showTitle) {
       setState(() {
@@ -84,19 +85,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       MaterialPageRoute(builder: (_) => const WebViewLoginPage()),
     );
     if (result == true && mounted) {
-      LoadingDialog.show(context, message: '加载数据...');
+      LoadingDialog.show(context, message: '鍔犺浇鏁版嵁...');
 
-      // 刷新所有状态
+      // 鍒锋柊鎵€鏈夌姸鎬?
       AppStateRefresher.refreshAll(ref);
 
-      // 等待关键数据加载完成
+      // 绛夊緟鍏抽敭鏁版嵁鍔犺浇瀹屾垚
       try {
         await Future.wait([
           ref.read(currentUserProvider.future),
           ref.read(userSummaryProvider.future),
         ]).timeout(const Duration(seconds: 10));
       } catch (_) {
-        // 超时或错误时继续
+        // 瓒呮椂鎴栭敊璇椂缁х画
       }
 
       if (mounted) {
@@ -109,17 +110,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('确认退出'),
-        content: const Text('确定要退出登录吗？'),
+        title: const Text('纭閫€鍑?),
+        content: const Text('纭畾瑕侀€€鍑虹櫥褰曞悧锛?),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('退出')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('鍙栨秷')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('閫€鍑?)),
         ],
       ),
     );
 
     if (confirmed == true && mounted) {
-      LoadingDialog.show(context, message: '正在退出...');
+      LoadingDialog.show(context, message: '姝ｅ湪閫€鍑?..');
 
       await ref.read(discourseServiceProvider).logout(callApi: true);
       if (mounted) {
@@ -138,7 +139,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       await WebViewPage.open(
         context, 
         'https://linux.do/u/$username/preferences/account',
-        title: '编辑资料',
+        title: '缂栬緫璧勬枡',
         injectCss: '''
           .new-user-content-wrapper {
             position: fixed !important;
@@ -158,7 +159,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         ''',
       );
       
-      // 返回后静默刷新数据
+      // 杩斿洖鍚庨潤榛樺埛鏂版暟鎹?
       if (mounted) {
         ref.read(currentUserProvider.notifier).refreshSilently().ignore();
         ref.refresh(userSummaryProvider.future).ignore();
@@ -207,7 +208,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         actions: isLoggedIn ? [
           IconButton(
             icon: const Icon(Icons.manage_accounts_rounded),
-            tooltip: '编辑资料',
+            tooltip: '缂栬緫璧勬枡',
             onPressed: _openProfileEdit,
           ),
           const Padding(
@@ -303,10 +304,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           children: [
             Icon(Icons.error_outline, color: theme.colorScheme.error),
             const SizedBox(width: 12),
-            Expanded(child: Text('加载失败: $error', style: theme.textTheme.bodySmall)),
+            Expanded(child: Text('鍔犺浇澶辫触: $error', style: theme.textTheme.bodySmall)),
             TextButton(
               onPressed: () => ref.invalidate(currentUserProvider), 
-              child: const Text('重试')
+              child: const Text('閲嶈瘯')
             ),
           ],
         ),
@@ -314,11 +315,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
   
-  /// 社区表现 - 使用 Card 保持一致性
+  /// 绀惧尯琛ㄧ幇 - 浣跨敤 Card 淇濇寔涓€鑷存€?
   Widget _buildStatsRow(ThemeData theme, UserSummary summary) {
     return Card(
       elevation: 0,
-       // 使用 surfaceContainerLow 与其他列表卡片区分或一致，这里选择稍微突出一点
+       // 浣跨敤 surfaceContainerLow 涓庡叾浠栧垪琛ㄥ崱鐗囧尯鍒嗘垨涓€鑷达紝杩欓噷閫夋嫨绋嶅井绐佸嚭涓€鐐?
       color: theme.colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -330,13 +331,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.daysVisited), '访问天数', summary.daysVisited),
+            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.daysVisited), '璁块棶澶╂暟', summary.daysVisited),
             _buildVerticalDivider(theme),
-            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.postsReadCount), '阅读帖子', summary.postsReadCount),
+            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.postsReadCount), '闃呰甯栧瓙', summary.postsReadCount),
             _buildVerticalDivider(theme),
-            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.likesReceived), '获得点赞', summary.likesReceived),
+            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.likesReceived), '鑾峰緱鐐硅禐', summary.likesReceived),
             _buildVerticalDivider(theme),
-            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.postCount), '发表回复', summary.postCount),
+            _buildCompactStatItem(theme, NumberUtils.formatCount(summary.postCount), '鍙戣〃鍥炲', summary.postCount),
           ],
         ),
       ),
@@ -391,43 +392,43 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           _buildOptionTile(
             icon: Icons.bookmark_rounded,
             iconColor: Colors.orange,
-            title: '我的书签',
+            title: '鎴戠殑涔︾',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarksPage()))
           ),
           _buildOptionTile(
             icon: Icons.drafts_rounded,
             iconColor: Colors.teal,
-            title: '我的草稿',
+            title: '鎴戠殑鑽夌',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DraftsPage()))
           ),
           _buildOptionTile(
             icon: Icons.article_rounded, 
             iconColor: Colors.blue,
-            title: '我的话题', 
+            title: '鎴戠殑璇濋', 
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyTopicsPage()))
           ),
           _buildOptionTile(
             icon: Icons.military_tech_rounded, 
             iconColor: Colors.amber[700]!,
-            title: '我的徽章', 
+            title: '鎴戠殑寰界珷', 
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyBadgesPage()))
           ),
           _buildOptionTile(
             icon: Icons.verified_user_rounded, 
             iconColor: Colors.green,
-            title: '信任要求', 
+            title: '淇′换瑕佹眰', 
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TrustLevelRequirementsPage()))
           ),
           _buildOptionTile(
             icon: Icons.history_rounded,
             iconColor: Colors.purple,
-            title: '浏览历史',
+            title: '娴忚鍘嗗彶',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BrowsingHistoryPage()))
           ),
           _buildOptionTile(
             icon: Icons.explore_rounded,
             iconColor: Colors.deepOrange,
-            title: '元宇宙',
+            title: '鍏冨畤瀹?,
             showDivider: false,
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MetaversePage()))
           ),
@@ -449,27 +450,33 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       child: Column(
         children: [
           _buildOptionTile(
+            icon: Icons.favorite_rounded,
+            iconColor: Colors.red,
+            title: '本地收藏夹',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalFavoritesPage())),
+          ),
+          _buildOptionTile(
             icon: Icons.color_lens_rounded, 
             iconColor: Colors.teal,
-            title: '外观设置', 
+            title: '澶栬璁剧疆', 
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppearancePage()))
           ),
           _buildOptionTile(
             icon: Icons.network_check_rounded,
             iconColor: Colors.blueGrey,
-            title: '网络设置',
+            title: '缃戠粶璁剧疆',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NetworkSettingsPage())),
           ),
           _buildOptionTile(
             icon: Icons.tune_rounded,
             iconColor: Colors.deepPurple,
-            title: '偏好设置',
+            title: '鍋忓ソ璁剧疆',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PreferencesPage())),
           ),
           _buildOptionTile(
             icon: Icons.info_rounded,
             iconColor: Colors.indigo,
-            title: '关于 FluxDO',
+            title: '鍏充簬 FluxDO',
             showDivider: false,
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutPage())),
           ),
@@ -498,7 +505,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
                 children: [
-                  // iOS 风格的图标容器保留，因为这不违和且好看
+                  // iOS 椋庢牸鐨勫浘鏍囧鍣ㄤ繚鐣欙紝鍥犱负杩欎笉杩濆拰涓斿ソ鐪?
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -527,7 +534,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
             if (showDivider)
               Padding(
-                padding: const EdgeInsets.only(left: 60), // 对齐文字
+                padding: const EdgeInsets.only(left: 60), // 瀵归綈鏂囧瓧
                 child: Divider(
                   height: 1, 
                   thickness: 0.5,
@@ -546,7 +553,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         child: TextButton.icon(
           onPressed: _logout,
           icon: Icon(Icons.logout_rounded, size: 18, color: theme.colorScheme.error.withValues(alpha:0.8)),
-          label: Text('退出当前账号', style: TextStyle(color: theme.colorScheme.error.withValues(alpha:0.8), fontWeight: FontWeight.w600)),
+          label: Text('閫€鍑哄綋鍓嶈处鍙?, style: TextStyle(color: theme.colorScheme.error.withValues(alpha:0.8), fontWeight: FontWeight.w600)),
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             backgroundColor: theme.colorScheme.errorContainer.withValues(alpha:0.1),
@@ -560,7 +567,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         child: FilledButton.icon(
           onPressed: _goToLogin,
           icon: const Icon(Icons.login_rounded, size: 20),
-          label: const Text('登录 Linux.do', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          label: const Text('鐧诲綍 Linux.do', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -662,7 +669,7 @@ class _ProfileInfoSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          name ?? username ?? (isLoggedIn ? '加载中...' : '未登录'),
+          name ?? username ?? (isLoggedIn ? '鍔犺浇涓?..' : '鏈櫥褰?),
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.bold,
             fontSize: 22,
@@ -704,7 +711,7 @@ class _ProfileInfoSection extends ConsumerWidget {
         ] else ...[
           const SizedBox(height: 4),
           Text(
-            '登录后体验更多功能',
+            '鐧诲綍鍚庝綋楠屾洿澶氬姛鑳?,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -715,7 +722,7 @@ class _ProfileInfoSection extends ConsumerWidget {
   }
 }
 
-/// 独立的头像组件，使用 AutomaticKeepAliveClientMixin 避免重建
+/// 鐙珛鐨勫ご鍍忕粍浠讹紝浣跨敤 AutomaticKeepAliveClientMixin 閬垮厤閲嶅缓
 class _ProfileAvatar extends StatefulWidget {
   final int? userId;
   final String avatarUrl;
@@ -762,7 +769,7 @@ class _ProfileAvatarState extends State<_ProfileAvatar> with AutomaticKeepAliveC
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // 必须调用以支持 AutomaticKeepAliveClientMixin
+    super.build(context); // 蹇呴』璋冪敤浠ユ敮鎸?AutomaticKeepAliveClientMixin
 
     final signature = _buildCacheSignature();
     if (_cachedAvatarWithFlair != null && signature == _cachedSignature) {
@@ -800,15 +807,15 @@ class _ProfileAvatarState extends State<_ProfileAvatar> with AutomaticKeepAliveC
 String _getTrustLevelLabel(int level) {
   switch (level) {
     case 0:
-      return 'L0 新 user';
+      return 'L0 鏂?user';
     case 1:
-      return 'L1 基本用户';
+      return 'L1 鍩烘湰鐢ㄦ埛';
     case 2:
-      return 'L2 成员';
+      return 'L2 鎴愬憳';
     case 3:
-      return 'L3 活跃用户';
+      return 'L3 娲昏穬鐢ㄦ埛';
     case 4:
-      return 'L4 领袖';
+      return 'L4 棰嗚';
     default:
       return 'L$level';
   }
@@ -877,3 +884,4 @@ Widget _buildStatusChip(UserStatus status, ThemeData theme) {
     ),
   );
 }
+
