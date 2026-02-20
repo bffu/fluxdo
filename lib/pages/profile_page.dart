@@ -110,11 +110,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('纭閫€鍑?),
-        content: const Text('纭畾瑕侀€€鍑虹櫥褰曞悧锛?),
+        title: const Text('确认退出'),
+        content: const Text('确定要退出登录吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('鍙栨秷')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('閫€鍑?)),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('退出')),
         ],
       ),
     );
@@ -428,7 +428,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           _buildOptionTile(
             icon: Icons.explore_rounded,
             iconColor: Colors.deepOrange,
-            title: '鍏冨畤瀹?,
+            title: '元宇宙',
             showDivider: false,
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MetaversePage()))
           ),
@@ -553,7 +553,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         child: TextButton.icon(
           onPressed: _logout,
           icon: Icon(Icons.logout_rounded, size: 18, color: theme.colorScheme.error.withValues(alpha:0.8)),
-          label: Text('閫€鍑哄綋鍓嶈处鍙?, style: TextStyle(color: theme.colorScheme.error.withValues(alpha:0.8), fontWeight: FontWeight.w600)),
+          label: Text('退出当前账号', style: TextStyle(color: theme.colorScheme.error.withValues(alpha:0.8), fontWeight: FontWeight.w600)),
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             backgroundColor: theme.colorScheme.errorContainer.withValues(alpha:0.1),
@@ -669,7 +669,7 @@ class _ProfileInfoSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          name ?? username ?? (isLoggedIn ? '鍔犺浇涓?..' : '鏈櫥褰?),
+          name ?? username ?? (isLoggedIn ? '加载中...' : '未登录'),
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.bold,
             fontSize: 22,
@@ -711,7 +711,7 @@ class _ProfileInfoSection extends ConsumerWidget {
         ] else ...[
           const SizedBox(height: 4),
           Text(
-            '鐧诲綍鍚庝綋楠屾洿澶氬姛鑳?,
+            '登录后体验更多功能',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
