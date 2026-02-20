@@ -3,6 +3,7 @@ import 'topic.dart';
 /// Locally persisted topic snapshot for "Local Favorites".
 class LocalFavoriteTopic {
   final int topicId;
+  final String folderId;
   final String title;
   final String slug;
   final String categoryId;
@@ -22,6 +23,7 @@ class LocalFavoriteTopic {
 
   const LocalFavoriteTopic({
     required this.topicId,
+    required this.folderId,
     required this.title,
     required this.slug,
     required this.categoryId,
@@ -48,10 +50,12 @@ class LocalFavoriteTopic {
 
   factory LocalFavoriteTopic.fromTopic(
     Topic topic, {
+    required String folderId,
     DateTime? addedAt,
   }) {
     return LocalFavoriteTopic(
       topicId: topic.id,
+      folderId: folderId,
       title: topic.title,
       slug: topic.slug,
       categoryId: topic.categoryId,
@@ -75,6 +79,7 @@ class LocalFavoriteTopic {
   factory LocalFavoriteTopic.fromJson(Map<String, dynamic> json) {
     return LocalFavoriteTopic(
       topicId: json['topic_id'] as int? ?? 0,
+      folderId: json['folder_id'] as String? ?? 'root',
       title: json['title'] as String? ?? '',
       slug: json['slug'] as String? ?? '',
       categoryId: json['category_id'] as String? ?? '0',
@@ -100,6 +105,7 @@ class LocalFavoriteTopic {
   Map<String, dynamic> toJson() {
     return {
       'topic_id': topicId,
+      'folder_id': folderId,
       'title': title,
       'slug': slug,
       'category_id': categoryId,

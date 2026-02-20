@@ -167,7 +167,7 @@ class TopicCard extends ConsumerWidget {
                     ),
                     IconButton(
                       onPressed: () {
-                        ref.read(localFavoriteTopicsProvider.notifier).toggleFromTopic(topic);
+                        ref.read(localFavoritesProvider.notifier).toggleFromTopic(topic);
                       },
                       icon: Icon(
                         isLocalFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -486,7 +486,7 @@ class CompactTopicCard extends ConsumerWidget {
               
               IconButton(
                 onPressed: () {
-                  ref.read(localFavoriteTopicsProvider.notifier).toggleFromTopic(topic);
+                  ref.read(localFavoritesProvider.notifier).toggleFromTopic(topic);
                 },
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
