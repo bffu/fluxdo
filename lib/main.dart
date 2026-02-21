@@ -290,7 +290,10 @@ class _MainPageState extends ConsumerState<MainPage> {
       selectedIndex: _currentIndex,
       onDestinationSelected: _onDestinationSelected,
       destinations: _buildDestinations(user),
-      body: _pages[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
     );
   }
 

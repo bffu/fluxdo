@@ -455,14 +455,8 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                     handleDoubleTapZoom(state, imageUrl: widget.imageUrl);
                   },
                   loadStateChanged: (state) {
-                    // 加载中时显示缩略图（如果有）
                     if (state.extendedImageLoadState == LoadState.loading) {
-                      if (widget.thumbnailUrl != null && widget.thumbnailUrl != widget.imageUrl) {
-                        return Image(
-                          image: discourseImageProvider(widget.thumbnailUrl!),
-                          fit: BoxFit.contain,
-                        );
-                      }
+                      return const Center(child: LoadingSpinner());
                     }
                     // 加载失败时检测是否为 SVG
                     if (state.extendedImageLoadState == LoadState.failed) {
@@ -505,7 +499,6 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                   },
                   itemBuilder: (context, index) {
                     final url = images[index];
-                    final thumbUrl = _getThumbnailForIndex(index);
 
                     // 用 ValueListenableBuilder 监听页码变化
                     // 确保 PageView 缓存的页面在切换时也会重建，移除旧 Hero
@@ -546,14 +539,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                             handleDoubleTapZoom(state, imageUrl: url);
                           },
                           loadStateChanged: (state) {
-                            // 加载中时显示缩略图（如果有）
                             if (state.extendedImageLoadState == LoadState.loading) {
-                              if (thumbUrl != null && thumbUrl != url) {
-                                return Image(
-                                  image: discourseImageProvider(thumbUrl),
-                                  fit: BoxFit.contain,
-                                );
-                              }
                               return const Center(child: LoadingSpinner());
                             }
                             // 加载失败时检测是否为 SVG
@@ -698,16 +684,6 @@ class _ImageViewerPageState extends State<ImageViewerPage>
         ),
       ),
     ));
-  }
-
-  /// 获取指定索引的缩略图 URL
-  String? _getThumbnailForIndex(int index) {
-    if (widget.thumbnailUrls != null && index < widget.thumbnailUrls!.length) {
-      return widget.thumbnailUrls![index];
-    } else if (index == widget.initialIndex && widget.thumbnailUrl != null) {
-      return widget.thumbnailUrl;
-    }
-    return null;
   }
 
   /// 构建 SVG fallback 组件
