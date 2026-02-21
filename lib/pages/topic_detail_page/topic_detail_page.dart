@@ -447,7 +447,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       // 鎼滅储鎸夐挳
       IconButton(
         icon: const Icon(Icons.search),
-        tooltip: '鎼滅储鏈瘽棰?,
+        tooltip: '搜索本话题',
         onPressed: () {
           ref.read(topicSearchProvider(widget.topicId).notifier).enterSearchMode();
         },
