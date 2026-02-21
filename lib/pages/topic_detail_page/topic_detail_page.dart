@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
@@ -41,15 +41,15 @@ part 'actions/_scroll_actions.dart';
 part 'actions/_user_actions.dart';
 part 'actions/_filter_actions.dart';
 
-/// 话题详情页面
+/// 璇濋璇︽儏椤甸潰
 class TopicDetailPage extends ConsumerStatefulWidget {
   final int topicId;
   final String? initialTitle;
-  final int? scrollToPostNumber; // 外部控制的跳转位置（如从通知跳转到指定楼层）
-  final bool embeddedMode; // 嵌入模式（双栏布局中使用，不显示返回按钮）
-  final bool autoSwitchToMasterDetail; // 仅在从首页进入时允许自动切换
-  final bool autoOpenReply; // 自动打开回复框（从草稿进入时使用）
-  final int? autoReplyToPostNumber; // 自动回复的帖子编号（从草稿进入时使用）
+  final int? scrollToPostNumber; // 澶栭儴鎺у埗鐨勮烦杞綅缃紙濡備粠閫氱煡璺宠浆鍒版寚瀹氭ゼ灞傦級
+  final bool embeddedMode; // 宓屽叆妯″紡锛堝弻鏍忓竷灞€涓娇鐢紝涓嶆樉绀鸿繑鍥炴寜閽級
+  final bool autoSwitchToMasterDetail; // 浠呭湪浠庨椤佃繘鍏ユ椂鍏佽鑷姩鍒囨崲
+  final bool autoOpenReply; // 鑷姩鎵撳紑鍥炲妗嗭紙浠庤崏绋胯繘鍏ユ椂浣跨敤锛?
+  final int? autoReplyToPostNumber; // 鑷姩鍥炲鐨勫笘瀛愮紪鍙凤紙浠庤崏绋胯繘鍏ユ椂浣跨敤锛?
 
   const TopicDetailPage({
     super.key,
@@ -67,10 +67,10 @@ class TopicDetailPage extends ConsumerStatefulWidget {
 }
 
 class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  /// 唯一实例 ID，确保每次打开页面都创建新的 provider 实例
+  /// 鍞竴瀹炰緥 ID锛岀‘淇濇瘡娆℃墦寮€椤甸潰閮藉垱寤烘柊鐨?provider 瀹炰緥
   final String _instanceId = const Uuid().v4();
 
-  /// Provider 参数（简化重复创建）
+  /// Provider 鍙傛暟锛堢畝鍖栭噸澶嶅垱寤猴級
   TopicDetailParams get _params => TopicDetailParams(
     widget.topicId,
     postNumber: _controller.currentPostNumber,
@@ -88,14 +88,14 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   bool _isCheckTitleVisibilityScheduled = false;
   bool _isRefreshing = false;
 
-  /// 标题是否显示（用 ValueNotifier 隔离 AppBar 更新）
+  /// 鏍囬鏄惁鏄剧ず锛堢敤 ValueNotifier 闅旂 AppBar 鏇存柊锛?
   final ValueNotifier<bool> _showTitleNotifier = ValueNotifier<bool>(false);
-  /// AppBar 是否有阴影（用 ValueNotifier 隔离 AppBar 更新）
+  /// AppBar 鏄惁鏈夐槾褰憋紙鐢?ValueNotifier 闅旂 AppBar 鏇存柊锛?
   final ValueNotifier<bool> _isScrolledUnderNotifier = ValueNotifier<bool>(false);
-  /// 展开头部是否可见（用 ValueNotifier 隔离 UI 更新）
+  /// 灞曞紑澶撮儴鏄惁鍙锛堢敤 ValueNotifier 闅旂 UI 鏇存柊锛?
   final ValueNotifier<bool> _isOverlayVisibleNotifier = ValueNotifier<bool>(false);
-  bool _isSwitchingMode = false;  // 切换热门回复模式
-  // 搜索相关
+  bool _isSwitchingMode = false;  // 鍒囨崲鐑棬鍥炲妯″紡
+  // 鎼滅储鐩稿叧
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   late final AnimationController _expandController;
@@ -103,7 +103,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   Set<int> _lastReadPostNumbers = {};
   bool? _lastCanShowDetailPane;
   bool _isAutoSwitching = false;
-  bool _autoOpenReplyHandled = false; // 是否已处理自动打开回复框
+  bool _autoOpenReplyHandled = false; // 鏄惁宸插鐞嗚嚜鍔ㄦ墦寮€鍥炲妗?
 
   @override
   void initState() {
@@ -135,20 +135,20 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       DiscourseService(),
       onTimingsSent: (topicId, postNumbers, highestSeen) {
         debugPrint('[TopicDetail] onTimingsSent callback triggered: topicId=$topicId, highestSeen=$highestSeen');
-        // 遍历当前排序 + 所有分类 tab，更新所有活跃的 provider 实例
+        // 閬嶅巻褰撳墠鎺掑簭 + 鎵€鏈夊垎绫?tab锛屾洿鏂版墍鏈夋椿璺冪殑 provider 瀹炰緥
         final currentSort = ref.read(topicSortProvider);
         final pinnedIds = ref.read(pinnedCategoriesProvider);
         final categoryIds = [null, ...pinnedIds];
         for (final categoryId in categoryIds) {
           ref.read(topicListProvider((currentSort, categoryId)).notifier).updateSeen(topicId, highestSeen);
         }
-        // unread 列表也需要更新
+        // unread 鍒楄〃涔熼渶瑕佹洿鏂?
         if (currentSort != TopicListFilter.unread) {
           for (final categoryId in categoryIds) {
             ref.read(topicListProvider((TopicListFilter.unread, categoryId)).notifier).updateSeen(topicId, highestSeen);
           }
         }
-        // 更新会话已读状态，触发 PostItem 消除未读圆点
+        // 鏇存柊浼氳瘽宸茶鐘舵€侊紝瑙﹀彂 PostItem 娑堥櫎鏈鍦嗙偣
         ref.read(topicSessionProvider(topicId).notifier).markAsRead(postNumbers);
       },
     );
@@ -184,7 +184,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     _controller.scrollController.removeListener(_onScroll);
     _screenTrack.stop();
     _controller.dispose();
-    // 清理搜索状态，防止重新进入时仍处于搜索模式
+    // 娓呯悊鎼滅储鐘舵€侊紝闃叉閲嶆柊杩涘叆鏃朵粛澶勪簬鎼滅储妯″紡
     ref.read(topicSearchProvider(widget.topicId).notifier).exitSearchMode();
     super.dispose();
   }
@@ -282,7 +282,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     });
   }
 
-  /// 在大屏上为内容添加宽度约束
+  /// 鍦ㄥぇ灞忎笂涓哄唴瀹规坊鍔犲搴︾害鏉?
   Widget _wrapWithConstraint(Widget child) {
     if (Responsive.isMobile(context)) return child;
     return Center(
@@ -293,7 +293,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     );
   }
 
-  /// 构建带动画的 AppBar
+  /// 鏋勫缓甯﹀姩鐢荤殑 AppBar
   PreferredSizeWidget _buildAppBar({
     required ThemeData theme,
     required TopicDetail? detail,
@@ -301,7 +301,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
   }) {
     final searchState = ref.watch(topicSearchProvider(widget.topicId));
 
-    // 搜索模式下的 AppBar
+    // 鎼滅储妯″紡涓嬬殑 AppBar
     if (searchState.isSearchMode) {
       return AppBar(
         automaticallyImplyLeading: false,
@@ -311,7 +311,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
           focusNode: _searchFocusNode,
           autofocus: true,
           decoration: InputDecoration(
-            hintText: '在本话题中搜索...',
+            hintText: '鍦ㄦ湰璇濋涓悳绱?..',
             border: InputBorder.none,
             hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
           ),
@@ -333,7 +333,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       );
     }
 
-    // 正常模式下的 AppBar
+    // 姝ｅ父妯″紡涓嬬殑 AppBar
     return PreferredSize(
       preferredSize: const Size.fromHeight(kToolbarHeight),
       child: ValueListenableBuilder<bool>(
@@ -376,7 +376,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     );
   }
 
-  /// 构建 AppBar 标题
+  /// 鏋勫缓 AppBar 鏍囬
   Widget _buildAppBarTitle({
     required ThemeData theme,
     required TopicDetail? detail,
@@ -428,7 +428,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     );
   }
 
-  /// 构建 AppBar Actions
+  /// 鏋勫缓 AppBar Actions
   List<Widget> _buildAppBarActions({
     required TopicDetail? detail,
     required TopicDetailNotifier notifier,
@@ -439,23 +439,23 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       return [];
     }
 
-    // 编辑话题入口：可以编辑话题元数据 或 可以编辑首贴内容
+    // 缂栬緫璇濋鍏ュ彛锛氬彲浠ョ紪杈戣瘽棰樺厓鏁版嵁 鎴?鍙互缂栬緫棣栬创鍐呭
     final firstPost = detail.postStream.posts.where((p) => p.postNumber == 1).firstOrNull;
     final canEditTopic = detail.canEdit || (firstPost?.canEdit ?? false);
 
     return [
-      // 搜索按钮
+      // 鎼滅储鎸夐挳
       IconButton(
         icon: const Icon(Icons.search),
-        tooltip: '搜索本话题',
+        tooltip: '鎼滅储鏈瘽棰?,
         onPressed: () {
           ref.read(topicSearchProvider(widget.topicId).notifier).enterSearchMode();
         },
       ),
-      // 更多选项
+      // 鏇村閫夐」
       PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
-        tooltip: '更多选项',
+        tooltip: '鏇村閫夐」',
         onSelected: (value) {
           if (value == 'subscribe') {
             showNotificationLevelSheet(
@@ -480,7 +480,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                   const SizedBox(width: 12),
-                  const Text('编辑话题'),
+                  const Text('缂栬緫璇濋'),
                 ],
               ),
             ),
@@ -495,7 +495,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
                 const SizedBox(width: 12),
-                const Text('订阅设置'),
+                const Text('璁㈤槄璁剧疆'),
               ],
             ),
           ),
@@ -535,16 +535,16 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
 
     _maybeSwitchToMasterDetail(canShowDetailPane, detail);
 
-    // 监听 MessageBus 事件
+    // 鐩戝惉 MessageBus 浜嬩欢
     ref.listen(topicChannelProvider(widget.topicId), (previous, next) {
-      // 1. reload_topic（话题状态变更：关闭/打开/固定等）
+      // 1. reload_topic锛堣瘽棰樼姸鎬佸彉鏇达細鍏抽棴/鎵撳紑/鍥哄畾绛夛級
       if (next.reloadRequested && !(previous?.reloadRequested ?? false)) {
         ref.read(topicChannelProvider(widget.topicId).notifier).clearReloadRequest();
         _handleReloadTopic(notifier, next.refreshStreamRequested);
         return;
       }
 
-      // 2. notification_level_change（通知级别变更）
+      // 2. notification_level_change锛堥€氱煡绾у埆鍙樻洿锛?
       if (next.notificationLevelChange != null && previous?.notificationLevelChange != next.notificationLevelChange) {
         final level = TopicNotificationLevel.fromValue(next.notificationLevelChange!);
         ref.read(topicChannelProvider(widget.topicId).notifier).clearNotificationLevelChange();
@@ -552,13 +552,13 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
         return;
       }
 
-      // 3. stats 更新
+      // 3. stats 鏇存柊
       if (next.statsUpdate != null && previous?.statsUpdate != next.statsUpdate) {
         notifier.applyStatsUpdate(next.statsUpdate!);
         ref.read(topicChannelProvider(widget.topicId).notifier).clearStatsUpdate();
       }
 
-      // 4. 帖子级别更新（created/revised/deleted/liked 等）
+      // 4. 甯栧瓙绾у埆鏇存柊锛坈reated/revised/deleted/liked 绛夛級
       final prevLen = previous?.postUpdates.length ?? 0;
       final nextLen = next.postUpdates.length;
       if (nextLen > prevLen) {
@@ -569,7 +569,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       }
     });
 
-    // 预解析帖子 HTML
+    // 棰勮В鏋愬笘瀛?HTML
     ref.listen(topicDetailProvider(params), (previous, next) {
       final posts = next.value?.postStream.posts;
       if (posts != null && posts.isNotEmpty) {
@@ -586,12 +586,12 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
           });
         }
 
-        // 自动打开回复框（从草稿进入时）
+        // 鑷姩鎵撳紑鍥炲妗嗭紙浠庤崏绋胯繘鍏ユ椂锛?
         if (widget.autoOpenReply && !_autoOpenReplyHandled) {
           _autoOpenReplyHandled = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              // 如果指定了回复帖子编号，找到对应的帖子
+              // 濡傛灉鎸囧畾浜嗗洖澶嶅笘瀛愮紪鍙凤紝鎵惧埌瀵瑰簲鐨勫笘瀛?
               Post? replyToPost;
               if (widget.autoReplyToPostNumber != null) {
                 replyToPost = posts.where(
@@ -613,7 +613,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
         canPop: !isSearchMode,
         onPopInvokedWithResult: (bool didPop, dynamic result) {
           if (!didPop) {
-            // 搜索模式下按返回键，退出搜索而不是退出页面
+            // 鎼滅储妯″紡涓嬫寜杩斿洖閿紝閫€鍑烘悳绱㈣€屼笉鏄€€鍑洪〉闈?
             _searchController.clear();
             ref.read(topicSearchProvider(widget.topicId).notifier).exitSearchMode();
           }
@@ -640,10 +640,13 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     final params = _params;
     final searchState = ref.watch(topicSearchProvider(widget.topicId));
     final isSearchMode = searchState.isSearchMode;
+    final archiveNotice = notifier.usingArchivedFallback
+        ? (notifier.archiveNotice ?? '褰撳墠鏄剧ず鏈湴绂荤嚎褰掓。鐗堟湰')
+        : null;
 
-    // 初始加载或切换模式时显示骨架屏
-    // 注意：当 hasError 为 true 时，即使 isLoading 也为 true（AsyncLoading.copyWithPrevious 语义），
-    // 也应该优先显示错误页面而不是骨架屏
+    // 鍒濆鍔犺浇鎴栧垏鎹㈡ā寮忔椂鏄剧ず楠ㄦ灦灞?
+    // 娉ㄦ剰锛氬綋 hasError 涓?true 鏃讹紝鍗充娇 isLoading 涔熶负 true锛圓syncLoading.copyWithPrevious 璇箟锛夛紝
+    // 涔熷簲璇ヤ紭鍏堟樉绀洪敊璇〉闈㈣€屼笉鏄鏋跺睆
     if (_isSwitchingMode) {
       final showHeaderSkeleton = widget.scrollToPostNumber == null || widget.scrollToPostNumber == 0;
       return _wrapWithConstraint(PostListSkeleton(withHeader: showHeaderSkeleton));
@@ -654,11 +657,11 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       return _wrapWithConstraint(PostListSkeleton(withHeader: showHeaderSkeleton));
     }
 
-    // 跳转中：等待包含目标帖子的新数据 - 显示骨架屏
+    // 璺宠浆涓細绛夊緟鍖呭惈鐩爣甯栧瓙鐨勬柊鏁版嵁 - 鏄剧ず楠ㄦ灦灞?
     final jumpTarget = _controller.jumpTargetPostNumber;
     if (jumpTarget != null && detail != null) {
       final posts = detail.postStream.posts;
-      // 检查目标帖子是否在当前加载的范围内
+      // 妫€鏌ョ洰鏍囧笘瀛愭槸鍚﹀湪褰撳墠鍔犺浇鐨勮寖鍥村唴
       final hasTarget = posts.isNotEmpty &&
           posts.first.postNumber <= jumpTarget &&
           posts.last.postNumber >= jumpTarget;
@@ -670,7 +673,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     Widget content = const SizedBox();
 
     if (detailAsync.hasError && detail == null) {
-      // 错误页面
+      // 閿欒椤甸潰
       content = CustomScrollView(
         slivers: [
           SliverErrorView(
@@ -680,25 +683,40 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
         ],
       );
     } else if (detail != null) {
-       // 正常内容构建 (保持原有逻辑，但简化提取)
+       // 姝ｅ父鍐呭鏋勫缓 (淇濇寔鍘熸湁閫昏緫锛屼絾绠€鍖栨彁鍙?
        content = _buildPostListContent(context, detail, notifier, isLoggedIn);
     }
 
-    // Stack 组装
+    if (archiveNotice != null && !isSearchMode) {
+      content = Padding(
+        padding: const EdgeInsets.only(top: 44),
+        child: content,
+      );
+    }
+
+    // Stack 缁勮
     return Stack(
         children: [
-          // 使用 Offstage 保持帖子列表存在但在搜索模式下隐藏，保留滚动位置
+          // 浣跨敤 Offstage 淇濇寔甯栧瓙鍒楄〃瀛樺湪浣嗗湪鎼滅储妯″紡涓嬮殣钘忥紝淇濈暀婊氬姩浣嶇疆
           Offstage(
             offstage: isSearchMode,
             child: content,
           ),
 
-          // 搜索视图
+          if (archiveNotice != null && !isSearchMode)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _buildArchiveNoticeBanner(context, archiveNotice),
+            ),
+
+          // 鎼滅储瑙嗗浘
           if (isSearchMode)
             TopicSearchView(
               topicId: widget.topicId,
               onJumpToPost: (postNumber) {
-                // 退出搜索模式并跳转到指定帖子
+                // 閫€鍑烘悳绱㈡ā寮忓苟璺宠浆鍒版寚瀹氬笘瀛?
                 ref.read(topicSearchProvider(widget.topicId).notifier).exitSearchMode();
                 _searchController.clear();
                 _scrollToPost(postNumber);
@@ -706,7 +724,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
             ),
 
           // TopicDetailOverlay (Bottom Bar)
-          // 使用 ValueListenableBuilder 隔离状态变化，避免整页重建
+          // 浣跨敤 ValueListenableBuilder 闅旂鐘舵€佸彉鍖栵紝閬垮厤鏁撮〉閲嶅缓
           if (detail != null && !isSearchMode)
             ValueListenableBuilder<bool>(
               valueListenable: _controller.showBottomBarNotifier,
@@ -739,7 +757,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
               },
             ),
 
-          // Expanded Header 相关组件（使用 ValueListenableBuilder 隔离状态变化）
+          // Expanded Header 鐩稿叧缁勪欢锛堜娇鐢?ValueListenableBuilder 闅旂鐘舵€佸彉鍖栵級
           if (!isSearchMode)
             ValueListenableBuilder<bool>(
               valueListenable: _isOverlayVisibleNotifier,
@@ -796,6 +814,39 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       );
   }
 
+  Widget _buildArchiveNoticeBanner(BuildContext context, String message) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.errorContainer.withValues(alpha: 0.95),
+      child: SizedBox(
+        height: 44,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 18,
+                color: theme.colorScheme.onErrorContainer,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  message,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPostListContent(
     BuildContext context,
     TopicDetail detail,
@@ -817,7 +868,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       _updateReadPostNumbers(readPostNumbers);
     }
 
-    // 计算分割线位置（热门回复模式下不显示）
+    // 璁＄畻鍒嗗壊绾夸綅缃紙鐑棬鍥炲妯″紡涓嬩笉鏄剧ず锛?
     int? dividerPostIndex;
     if (!notifier.isSummaryMode) {
       final lastRead = detail.lastReadPostNumber;
@@ -832,7 +883,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       }
     }
 
-    // 初始定位
+    // 鍒濆瀹氫綅
     if (!_controller.hasInitialScrolled && posts.isNotEmpty) {
       _controller.markInitialScrolled(posts.first.postNumber);
       if (_controller.currentPostNumber == null || _controller.currentPostNumber == 0) {
@@ -848,7 +899,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
 
     final centerPostIndex = _controller.findCenterPostIndex(posts);
 
-    // 使用 Consumer + select 隔离 typingUsers 状态变化，避免整页重建
+    // 浣跨敤 Consumer + select 闅旂 typingUsers 鐘舵€佸彉鍖栵紝閬垮厤鏁撮〉閲嶅缓
     Widget scrollView = Consumer(
       builder: (context, ref, _) {
         final typingUsers = ref.watch(
@@ -898,8 +949,8 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       child: scrollView,
     );
 
-    // 使用 ValueListenableBuilder 隔离定位状态变化，避免整页重建
-    // 使用 child 参数避免 scrollView 重建
+    // 浣跨敤 ValueListenableBuilder 闅旂瀹氫綅鐘舵€佸彉鍖栵紝閬垮厤鏁撮〉閲嶅缓
+    // 浣跨敤 child 鍙傛暟閬垮厤 scrollView 閲嶅缓
     return ValueListenableBuilder<bool>(
       valueListenable: _controller.isPositionedNotifier,
       builder: (context, isPositioned, child) {

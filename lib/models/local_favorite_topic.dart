@@ -2,6 +2,10 @@ import 'topic.dart';
 
 /// Locally persisted topic snapshot for "Local Favorites".
 class LocalFavoriteTopic {
+  static const unavailableReasonDeleted = 'deleted';
+  static const unavailableReasonForbidden = 'forbidden';
+  static const unavailableReasonNetwork = 'network';
+
   final int topicId;
   final String folderId;
   final String title;
@@ -20,6 +24,10 @@ class LocalFavoriteTopic {
   final bool canHaveAnswer;
   final int? lastPostedAtMillis;
   final int addedAtMillis;
+  final bool archivedLocally;
+  final int? archiveUpdatedAtMillis;
+  final bool sourceUnavailable;
+  final String? sourceUnavailableReason;
 
   const LocalFavoriteTopic({
     required this.topicId,
@@ -40,6 +48,10 @@ class LocalFavoriteTopic {
     required this.canHaveAnswer,
     required this.lastPostedAtMillis,
     required this.addedAtMillis,
+    this.archivedLocally = false,
+    this.archiveUpdatedAtMillis,
+    this.sourceUnavailable = false,
+    this.sourceUnavailableReason,
   });
 
   DateTime get addedAt => DateTime.fromMillisecondsSinceEpoch(addedAtMillis);
@@ -47,6 +59,21 @@ class LocalFavoriteTopic {
   DateTime? get lastPostedAt => lastPostedAtMillis == null
       ? null
       : DateTime.fromMillisecondsSinceEpoch(lastPostedAtMillis!);
+
+  DateTime? get archiveUpdatedAt => archiveUpdatedAtMillis == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(archiveUpdatedAtMillis!);
+
+  String get displayTitle {
+    if (!sourceUnavailable) return title;
+    if (sourceUnavailableReason == unavailableReasonDeleted) {
+      return '[已删除] $title';
+    }
+    if (sourceUnavailableReason == unavailableReasonForbidden) {
+      return '[无权限] $title';
+    }
+    return '[离线归档] $title';
+  }
 
   factory LocalFavoriteTopic.fromTopic(
     Topic topic, {
@@ -73,6 +100,10 @@ class LocalFavoriteTopic {
       lastPostedAtMillis: topic.lastPostedAt?.millisecondsSinceEpoch,
       addedAtMillis:
           (addedAt ?? DateTime.now()).millisecondsSinceEpoch,
+      archivedLocally: false,
+      archiveUpdatedAtMillis: null,
+      sourceUnavailable: false,
+      sourceUnavailableReason: null,
     );
   }
 
@@ -99,6 +130,10 @@ class LocalFavoriteTopic {
       lastPostedAtMillis: json['last_posted_at_millis'] as int?,
       addedAtMillis:
           json['added_at_millis'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+      archivedLocally: json['archived_locally'] as bool? ?? false,
+      archiveUpdatedAtMillis: json['archive_updated_at_millis'] as int?,
+      sourceUnavailable: json['source_unavailable'] as bool? ?? false,
+      sourceUnavailableReason: json['source_unavailable_reason'] as String?,
     );
   }
 
@@ -122,13 +157,70 @@ class LocalFavoriteTopic {
       'can_have_answer': canHaveAnswer,
       'last_posted_at_millis': lastPostedAtMillis,
       'added_at_millis': addedAtMillis,
+      'archived_locally': archivedLocally,
+      'archive_updated_at_millis': archiveUpdatedAtMillis,
+      'source_unavailable': sourceUnavailable,
+      'source_unavailable_reason': sourceUnavailableReason,
     };
+  }
+
+  LocalFavoriteTopic copyWith({
+    int? topicId,
+    String? folderId,
+    String? title,
+    String? slug,
+    String? categoryId,
+    List<String>? tags,
+    int? postsCount,
+    int? likeCount,
+    String? lastPosterUsername,
+    bool? pinned,
+    bool? closed,
+    bool? unseen,
+    int? unread,
+    int? lastReadPostNumber,
+    bool? hasAcceptedAnswer,
+    bool? canHaveAnswer,
+    int? lastPostedAtMillis,
+    int? addedAtMillis,
+    bool? archivedLocally,
+    int? archiveUpdatedAtMillis,
+    bool? sourceUnavailable,
+    String? sourceUnavailableReason,
+    bool clearSourceUnavailableReason = false,
+  }) {
+    return LocalFavoriteTopic(
+      topicId: topicId ?? this.topicId,
+      folderId: folderId ?? this.folderId,
+      title: title ?? this.title,
+      slug: slug ?? this.slug,
+      categoryId: categoryId ?? this.categoryId,
+      tags: tags ?? this.tags,
+      postsCount: postsCount ?? this.postsCount,
+      likeCount: likeCount ?? this.likeCount,
+      lastPosterUsername: lastPosterUsername ?? this.lastPosterUsername,
+      pinned: pinned ?? this.pinned,
+      closed: closed ?? this.closed,
+      unseen: unseen ?? this.unseen,
+      unread: unread ?? this.unread,
+      lastReadPostNumber: lastReadPostNumber ?? this.lastReadPostNumber,
+      hasAcceptedAnswer: hasAcceptedAnswer ?? this.hasAcceptedAnswer,
+      canHaveAnswer: canHaveAnswer ?? this.canHaveAnswer,
+      lastPostedAtMillis: lastPostedAtMillis ?? this.lastPostedAtMillis,
+      addedAtMillis: addedAtMillis ?? this.addedAtMillis,
+      archivedLocally: archivedLocally ?? this.archivedLocally,
+      archiveUpdatedAtMillis: archiveUpdatedAtMillis ?? this.archiveUpdatedAtMillis,
+      sourceUnavailable: sourceUnavailable ?? this.sourceUnavailable,
+      sourceUnavailableReason: clearSourceUnavailableReason
+          ? null
+          : (sourceUnavailableReason ?? this.sourceUnavailableReason),
+    );
   }
 
   Topic toTopic() {
     return Topic(
       id: topicId,
-      title: title,
+      title: displayTitle,
       slug: slug,
       postsCount: postsCount,
       replyCount: postsCount > 0 ? postsCount - 1 : 0,

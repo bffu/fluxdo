@@ -1,21 +1,23 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/local_favorite_topic.dart';
 import '../models/topic.dart';
 import 'core_providers.dart';
+import 'local_favorites_provider.dart';
 import 'message_bus/models.dart';
 
 part 'topic_detail/_loading_methods.dart';
 part 'topic_detail/_filter_methods.dart';
 part 'topic_detail/_post_updates.dart';
 
-/// 话题详情参数
-/// 使用 instanceId 确保每次打开页面都是独立的 provider 实例
-/// 解决：打开话题 -> 点击用户 -> 再进入同一话题时应该是新的页面状态
+/// Topic detail provider params.
 class TopicDetailParams {
   final int topicId;
   final int? postNumber;
-  /// 唯一实例 ID，确保每次打开页面都创建新的 provider 实例
-  /// 默认为空字符串，用于 MessageBus 等不需要精确匹配的场景
   final String instanceId;
 
   const TopicDetailParams(this.topicId, {this.postNumber, this.instanceId = ''});
@@ -31,7 +33,7 @@ class TopicDetailParams {
   int get hashCode => Object.hash(topicId, instanceId);
 }
 
-/// 话题详情 Notifier (支持双向加载)
+/// Topic detail notifier with bidirectional loading.
 class TopicDetailNotifier extends AsyncNotifier<TopicDetail> {
   TopicDetailNotifier(this.arg);
   final TopicDetailParams arg;
@@ -40,8 +42,10 @@ class TopicDetailNotifier extends AsyncNotifier<TopicDetail> {
   bool _hasMoreBefore = true;
   bool _isLoadingPrevious = false;
   bool _isLoadingMore = false;
-  String? _filter;  // 当前过滤模式（如 'summary' 表示热门回复）
-  String? _usernameFilter;  // 当前用户名过滤（如只看题主）
+  String? _filter;
+  String? _usernameFilter;
+  bool _usingArchivedFallback = false;
+  String? _archiveNotice;
 
   bool get hasMoreAfter => _hasMoreAfter;
   bool get hasMoreBefore => _hasMoreBefore;
@@ -50,11 +54,34 @@ class TopicDetailNotifier extends AsyncNotifier<TopicDetail> {
   bool get isSummaryMode => _filter == 'summary';
   bool get isAuthorOnlyMode => _usernameFilter != null;
   bool get _isFilteredMode => _filter != null || _usernameFilter != null;
+  bool get usingArchivedFallback => _usingArchivedFallback;
+  String? get archiveNotice => _archiveNotice;
 
-  /// 根据 posts 和 stream 统一计算边界状态
-  ///
-  /// 所有需要更新 hasMoreBefore/hasMoreAfter 的地方都应该调用此方法，
-  /// 确保判断逻辑的一致性。
+  static String _reasonFromError(Object error) {
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 404 || statusCode == 410) {
+        return LocalFavoriteTopic.unavailableReasonDeleted;
+      }
+      if (statusCode == 403) {
+        return LocalFavoriteTopic.unavailableReasonForbidden;
+      }
+    }
+    return LocalFavoriteTopic.unavailableReasonNetwork;
+  }
+
+  static String _noticeFromReason(String reason) {
+    switch (reason) {
+      case LocalFavoriteTopic.unavailableReasonDeleted:
+        return '源帖可能已删除，当前显示本地离线归档版本';
+      case LocalFavoriteTopic.unavailableReasonForbidden:
+        return '当前无权限访问原帖，当前显示本地离线归档版本';
+      default:
+        return '网络不可用，当前显示本地离线归档版本';
+    }
+  }
+
+  /// Keep boundary calculation logic consistent.
   void _updateBoundaryState(List<Post> posts, List<int> stream) {
     if (posts.isEmpty || stream.isEmpty) {
       _hasMoreBefore = false;
@@ -71,7 +98,6 @@ class TopicDetailNotifier extends AsyncNotifier<TopicDetail> {
     _hasMoreAfter = lastIndex != -1 && lastIndex < stream.length - 1;
   }
 
-  /// 更新单个帖子的辅助方法
   void _updatePostById(int postId, Post Function(Post) updater) {
     final currentDetail = state.value;
     if (currentDetail == null) return;
@@ -90,25 +116,56 @@ class TopicDetailNotifier extends AsyncNotifier<TopicDetail> {
 
   @override
   Future<TopicDetail> build() async {
-    debugPrint('[TopicDetailNotifier] build called with topicId=${arg.topicId}, postNumber=${arg.postNumber}');
+    debugPrint(
+      '[TopicDetailNotifier] build called with topicId=${arg.topicId}, postNumber=${arg.postNumber}',
+    );
     _hasMoreAfter = true;
     _hasMoreBefore = true;
+    _usingArchivedFallback = false;
+    _archiveNotice = null;
+
     final service = ref.read(discourseServiceProvider);
-    final detail = await service.getTopicDetail(arg.topicId, postNumber: arg.postNumber, trackVisit: true);
+    final localFavorites = ref.read(localFavoritesProvider.notifier);
+    final isLocalFavorite = localFavorites.containsTopic(arg.topicId);
 
-    _updateBoundaryState(detail.postStream.posts, detail.postStream.stream);
+    try {
+      final detail = await service.getTopicDetail(
+        arg.topicId,
+        postNumber: arg.postNumber,
+        trackVisit: true,
+      );
 
-    return detail;
+      _updateBoundaryState(detail.postStream.posts, detail.postStream.stream);
+
+      if (isLocalFavorite) {
+        unawaited(localFavorites.syncArchiveForTopic(arg.topicId, seedDetail: detail));
+      }
+
+      return detail;
+    } catch (error) {
+      if (!isLocalFavorite) rethrow;
+
+      final archivedDetail = await localFavorites.loadArchivedDetail(arg.topicId);
+      if (archivedDetail == null) rethrow;
+
+      final reason = _reasonFromError(error);
+      await localFavorites.markSourceUnavailable(arg.topicId, reason: reason);
+
+      _usingArchivedFallback = true;
+      _archiveNotice = _noticeFromReason(reason);
+      _updateBoundaryState(archivedDetail.postStream.posts, archivedDetail.postStream.stream);
+      return archivedDetail;
+    }
   }
 }
 
-final topicDetailProvider = AsyncNotifierProvider.family.autoDispose<TopicDetailNotifier, TopicDetail, TopicDetailParams>(
+final topicDetailProvider =
+    AsyncNotifierProvider.family.autoDispose<TopicDetailNotifier, TopicDetail, TopicDetailParams>(
   TopicDetailNotifier.new,
 );
 
-/// 话题 AI 摘要 Provider
-final topicSummaryProvider = FutureProvider.autoDispose
-    .family<TopicSummary?, int>((ref, topicId) async {
+/// Topic AI summary provider.
+final topicSummaryProvider = FutureProvider.autoDispose.family<TopicSummary?, int>((ref, topicId) async {
   final service = ref.read(discourseServiceProvider);
   return service.getTopicSummary(topicId);
 });

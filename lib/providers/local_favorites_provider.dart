@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // ignore: depend_on_referenced_packages
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../models/local_favorite_topic.dart';
+import '../models/local_favorite_topic_archive.dart';
 import '../models/topic.dart';
+import '../services/local_favorite_archive_service.dart';
+import 'core_providers.dart';
 import 'theme_provider.dart';
 
 class LocalFavoriteFolder {
@@ -75,6 +79,7 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
   static const rootFolderId = 'root';
   static const _storageKey = 'local_favorite_topics_v2';
   static const _legacyStorageKey = 'local_favorite_topics_v1';
+  static const _archiveBatchSize = 20;
 
   LocalFavoritesNotifier(this._read)
       : super(LocalFavoritesState.empty(rootFolder: _rootFolder)) {
@@ -82,6 +87,7 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
   }
 
   final Ref _read;
+  final LocalFavoriteArchiveService _archiveService = LocalFavoriteArchiveService();
 
   static const _rootFolder = LocalFavoriteFolder(
     id: rootFolderId,
@@ -90,8 +96,7 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
     createdAtMillis: 0,
   );
 
-  static String _newFolderId() =>
-      'fld_${DateTime.now().microsecondsSinceEpoch}';
+  static String _newFolderId() => 'fld_${DateTime.now().microsecondsSinceEpoch}';
 
   void _loadFromStorage() {
     final prefs = _read.read(sharedPreferencesProvider);
@@ -157,10 +162,7 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
         final normalizedTopics = topics
             .map((topic) {
               if (!folderById.containsKey(topic.folderId)) {
-                return LocalFavoriteTopic.fromJson({
-                  ...topic.toJson(),
-                  'folder_id': rootFolderId,
-                });
+                return topic.copyWith(folderId: rootFolderId);
               }
               return topic;
             })
@@ -183,6 +185,141 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
       'topics': state.topics.map((e) => e.toJson()).toList(),
     });
     await prefs.setString(_storageKey, json);
+  }
+
+  static String _reasonFromError(Object error) {
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 404 || statusCode == 410) {
+        return LocalFavoriteTopic.unavailableReasonDeleted;
+      }
+      if (statusCode == 403) {
+        return LocalFavoriteTopic.unavailableReasonForbidden;
+      }
+    }
+    return LocalFavoriteTopic.unavailableReasonNetwork;
+  }
+
+  int _topicIndex(int topicId) {
+    return state.topics.indexWhere((e) => e.topicId == topicId);
+  }
+
+  void _replaceTopic(int index, LocalFavoriteTopic topic) {
+    final next = [...state.topics];
+    next[index] = topic;
+    state = state.copyWith(topics: next);
+  }
+
+  void _updateTopicStatus(
+    int topicId, {
+    bool? archivedLocally,
+    int? archiveUpdatedAtMillis,
+    bool? sourceUnavailable,
+    String? sourceUnavailableReason,
+    bool clearSourceUnavailableReason = false,
+  }) {
+    final index = _topicIndex(topicId);
+    if (index < 0) return;
+    final current = state.topics[index];
+    _replaceTopic(
+      index,
+      current.copyWith(
+        archivedLocally: archivedLocally,
+        archiveUpdatedAtMillis: archiveUpdatedAtMillis,
+        sourceUnavailable: sourceUnavailable,
+        sourceUnavailableReason: sourceUnavailableReason,
+        clearSourceUnavailableReason: clearSourceUnavailableReason,
+      ),
+    );
+  }
+
+  void _mergeTopicDetailIntoEntry(
+    TopicDetail detail, {
+    bool? archivedLocally,
+    int? archiveUpdatedAtMillis,
+    bool? sourceUnavailable,
+    String? sourceUnavailableReason,
+    bool clearSourceUnavailableReason = false,
+  }) {
+    final index = _topicIndex(detail.id);
+    if (index < 0) return;
+    final current = state.topics[index];
+    final sortedPosts = [...detail.postStream.posts]
+      ..sort((a, b) => a.postNumber.compareTo(b.postNumber));
+    final lastPost = sortedPosts.isEmpty ? null : sortedPosts.last;
+
+    _replaceTopic(
+      index,
+      current.copyWith(
+        title: detail.title,
+        slug: detail.slug,
+        categoryId: '${detail.categoryId}',
+        tags: detail.tags?.map((e) => e.name).toList() ?? current.tags,
+        postsCount: detail.postsCount,
+        likeCount: detail.likeCount,
+        lastPosterUsername: lastPost?.username ?? current.lastPosterUsername,
+        closed: detail.closed,
+        lastReadPostNumber: detail.lastReadPostNumber ?? current.lastReadPostNumber,
+        hasAcceptedAnswer: detail.hasAcceptedAnswer,
+        canHaveAnswer: current.canHaveAnswer || detail.hasAcceptedAnswer,
+        lastPostedAtMillis:
+            lastPost?.createdAt.millisecondsSinceEpoch ?? current.lastPostedAtMillis,
+        archivedLocally: archivedLocally,
+        archiveUpdatedAtMillis: archiveUpdatedAtMillis,
+        sourceUnavailable: sourceUnavailable,
+        sourceUnavailableReason: sourceUnavailableReason,
+        clearSourceUnavailableReason: clearSourceUnavailableReason,
+      ),
+    );
+  }
+
+  Future<TopicDetail> _buildCompleteDetail(
+    TopicDetail detail,
+  ) async {
+    final stream = detail.postStream.stream;
+    if (stream.isEmpty) return detail;
+
+    final service = _read.read(discourseServiceProvider);
+    final postById = <int, Post>{
+      for (final post in detail.postStream.posts) post.id: post,
+    };
+    final missingIds = stream.where((postId) => !postById.containsKey(postId)).toList();
+
+    for (int i = 0; i < missingIds.length; i += _archiveBatchSize) {
+      final batch = missingIds.skip(i).take(_archiveBatchSize).toList();
+      try {
+        final chunk = await service.getPosts(detail.id, batch);
+        for (final post in chunk.posts) {
+          postById[post.id] = post;
+        }
+      } catch (e) {
+        // Keep partial archive if some batches fail.
+      }
+
+      if (i + _archiveBatchSize < missingIds.length) {
+        await Future.delayed(const Duration(milliseconds: 120));
+      }
+    }
+
+    final orderedPosts = <Post>[];
+    for (final postId in stream) {
+      final post = postById[postId];
+      if (post != null) {
+        orderedPosts.add(post);
+      }
+    }
+    if (orderedPosts.isEmpty) {
+      orderedPosts
+        ..addAll(postById.values)
+        ..sort((a, b) => a.postNumber.compareTo(b.postNumber));
+    }
+
+    return detail.copyWith(
+      postStream: PostStream(
+        posts: orderedPosts,
+        stream: stream,
+      ),
+    );
   }
 
   bool containsTopic(int topicId) {
@@ -247,15 +384,10 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
   }) {
     if (folderById(folderId) == null) return;
 
-    state = state.copyWith(
-      topics: state.topics.map((topic) {
-        if (topic.topicId != topicId) return topic;
-        return LocalFavoriteTopic.fromJson({
-          ...topic.toJson(),
-          'folder_id': folderId,
-        });
-      }).toList(),
-    );
+    final index = _topicIndex(topicId);
+    if (index < 0) return;
+    final current = state.topics[index];
+    _replaceTopic(index, current.copyWith(folderId: folderId));
     unawaited(_persist());
   }
 
@@ -263,12 +395,13 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
     Topic topic, {
     String folderId = rootFolderId,
   }) {
-    final index = state.topics.indexWhere((e) => e.topicId == topic.id);
+    final index = _topicIndex(topic.id);
 
     if (index >= 0) {
       final next = [...state.topics]..removeAt(index);
       state = state.copyWith(topics: next);
       unawaited(_persist());
+      unawaited(_archiveService.deleteArchive(topic.id));
       return false;
     }
 
@@ -280,7 +413,90 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
     final withoutSame = state.topics.where((e) => e.topicId != topic.id).toList();
     state = state.copyWith(topics: [entry, ...withoutSame]);
     unawaited(_persist());
+    unawaited(syncArchiveForTopic(topic.id));
     return true;
+  }
+
+  Future<void> syncArchiveForTopic(
+    int topicId, {
+    TopicDetail? seedDetail,
+  }) async {
+    if (!containsTopic(topicId)) return;
+
+    try {
+      final service = _read.read(discourseServiceProvider);
+      final detail = seedDetail ??
+          await service.getTopicDetail(topicId, postNumber: 1, trackVisit: false);
+      final completedDetail = await _buildCompleteDetail(detail);
+      final archive = LocalFavoriteTopicArchive.fromTopicDetail(
+        completedDetail,
+        lastSyncedAt: DateTime.now(),
+      );
+      await _archiveService.saveArchive(archive);
+      _mergeTopicDetailIntoEntry(
+        completedDetail,
+        archivedLocally: true,
+        archiveUpdatedAtMillis: archive.lastSyncedAtMillis,
+        sourceUnavailable: false,
+        clearSourceUnavailableReason: true,
+      );
+      await _persist();
+    } catch (error) {
+      if (seedDetail != null) {
+        final archive = LocalFavoriteTopicArchive.fromTopicDetail(
+          seedDetail,
+          lastSyncedAt: DateTime.now(),
+        );
+        await _archiveService.saveArchive(archive);
+        _mergeTopicDetailIntoEntry(
+          seedDetail,
+          archivedLocally: true,
+          archiveUpdatedAtMillis: archive.lastSyncedAtMillis,
+          sourceUnavailable: false,
+          clearSourceUnavailableReason: true,
+        );
+        await _persist();
+        return;
+      }
+
+      final hasArchive = await _archiveService.hasArchive(topicId);
+      if (hasArchive) {
+        _updateTopicStatus(
+          topicId,
+          archivedLocally: true,
+          sourceUnavailable: true,
+          sourceUnavailableReason: _reasonFromError(error),
+        );
+        await _persist();
+      }
+    }
+  }
+
+  Future<TopicDetail?> loadArchivedDetail(int topicId) async {
+    final archive = await _archiveService.loadArchive(topicId);
+    return archive?.toTopicDetail();
+  }
+
+  Future<void> markSourceUnavailable(
+    int topicId, {
+    required String reason,
+  }) async {
+    _updateTopicStatus(
+      topicId,
+      archivedLocally: true,
+      sourceUnavailable: true,
+      sourceUnavailableReason: reason,
+    );
+    await _persist();
+  }
+
+  Future<void> markSourceAvailable(int topicId) async {
+    _updateTopicStatus(
+      topicId,
+      sourceUnavailable: false,
+      clearSourceUnavailableReason: true,
+    );
+    await _persist();
   }
 
   void removeByTopicId(int topicId) {
@@ -288,11 +504,14 @@ class LocalFavoritesNotifier extends StateNotifier<LocalFavoritesState> {
       topics: state.topics.where((e) => e.topicId != topicId).toList(),
     );
     unawaited(_persist());
+    unawaited(_archiveService.deleteArchive(topicId));
   }
 
   void clear() {
+    final topicIds = state.topics.map((e) => e.topicId).toList();
     state = state.copyWith(topics: const []);
     unawaited(_persist());
+    unawaited(_archiveService.deleteArchives(topicIds));
   }
 }
 
