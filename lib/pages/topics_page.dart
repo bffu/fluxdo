@@ -830,7 +830,9 @@ class _TopicListState extends ConsumerState<_TopicList>
         }
 
         final incomingState = ref.watch(latestChannelProvider);
-        final hasNewTopics = currentSort == TopicListFilter.latest
+        final isLatestLikeSort =
+            currentSort == TopicListFilter.latest || currentSort == TopicListFilter.createdAt;
+        final hasNewTopics = isLatestLikeSort
             && incomingState.hasIncomingForCategory(widget.categoryId);
         final newTopicCount = incomingState.incomingCountForCategory(widget.categoryId);
         final newTopicOffset = hasNewTopics ? 1 : 0;
@@ -841,7 +843,7 @@ class _TopicListState extends ConsumerState<_TopicList>
               // ignore: unused_result
               await ref.refresh(topicListProvider(providerKey).future);
             } catch (_) {}
-            if (currentSort == TopicListFilter.latest) {
+            if (isLatestLikeSort) {
               ref.read(latestChannelProvider.notifier).clearNewTopicsForCategory(widget.categoryId);
             }
           },

@@ -10,6 +10,7 @@ import 'topic_sort_provider.dart';
 
 enum TopicListFilter {
   latest,
+  createdAt,
   newTopics,
   unread,
   top,
@@ -22,6 +23,8 @@ extension TopicListFilterX on TopicListFilter {
   String get filterName {
     switch (this) {
       case TopicListFilter.latest:
+        return 'latest';
+      case TopicListFilter.createdAt:
         return 'latest';
       case TopicListFilter.newTopics:
         return 'new';
@@ -84,7 +87,8 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
 
     // 优化：如果是 latest 列表且没有筛选条件，优先同步使用预加载数据
     // 这样可以避免显示 loading 状态
-    if (_sort == TopicListFilter.latest && filter.isEmpty) {
+    if ((_sort == TopicListFilter.latest || _sort == TopicListFilter.createdAt) &&
+        filter.isEmpty) {
       final preloadedService = PreloadedDataService();
       final preloadedData = preloadedService.getInitialTopicListSync();
       if (preloadedData != null) {
@@ -92,7 +96,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
           PaginationResult(items: preloadedData.topics, moreUrl: preloadedData.moreTopicsUrl),
         );
         _hasMore = result.hasMore;
-        return result.items;
+        return _sortTopics(result.items);
       }
       if (preloadedService.hasInitialTopicList) {
         final asyncPreloaded = await preloadedService.getInitialTopicList();
@@ -101,7 +105,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
             PaginationResult(items: asyncPreloaded.topics, moreUrl: asyncPreloaded.moreTopicsUrl),
           );
           _hasMore = result.hasMore;
-          return result.items;
+          return _sortTopics(result.items);
         }
       }
     }
@@ -114,7 +118,23 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
     );
     _hasMore = result.hasMore;
-    return result.items;
+    return _sortTopics(result.items);
+  }
+
+  List<Topic> _sortTopics(List<Topic> topics) {
+    if (_sort != TopicListFilter.createdAt) {
+      return topics;
+    }
+
+    final sorted = [...topics];
+    sorted.sort((a, b) {
+      final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+      final timeCompare = bTime.compareTo(aTime);
+      if (timeCompare != 0) return timeCompare;
+      return b.id.compareTo(a.id);
+    });
+    return sorted;
   }
 
   Future<TopicListResponse> _fetchTopics(
@@ -139,6 +159,8 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
     // 无筛选条件，使用原有方法
     switch (filter) {
       case TopicListFilter.latest:
+        return service.getLatestTopics(page: page);
+      case TopicListFilter.createdAt:
         return service.getLatestTopics(page: page);
       case TopicListFilter.newTopics:
         return service.getNewTopics(page: page);
@@ -195,7 +217,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
       );
       _hasMore = result.hasMore;
-      return result.items;
+      return _sortTopics(result.items);
     });
   }
 
@@ -211,7 +233,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
       );
       _hasMore = result.hasMore;
-      state = AsyncValue.data(result.items);
+      state = AsyncValue.data(_sortTopics(result.items));
     } catch (e) {
       debugPrint('Silent refresh failed: $e');
     }
@@ -242,7 +264,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       if (result.items.length > currentTopics.length) {
         _page = nextPage;
       }
-      return result.items;
+      return _sortTopics(result.items);
     });
   }
 
@@ -270,7 +292,12 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         replyCount: detail.postsCount > 0 ? detail.postsCount - 1 : 0,
         views: existingTopic.views,
         likeCount: existingTopic.likeCount,
+        excerpt: existingTopic.excerpt,
+        createdAt: existingTopic.createdAt,
         lastPostedAt: existingTopic.lastPostedAt,
+        visible: existingTopic.visible,
+        closed: existingTopic.closed,
+        archived: existingTopic.archived,
         pinned: existingTopic.pinned,
         tags: detail.tags ?? existingTopic.tags,
         posters: existingTopic.posters,
@@ -287,7 +314,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         return t.id == topicId ? updatedTopic : t;
       }).toList();
 
-      state = AsyncValue.data(newList);
+      state = AsyncValue.data(_sortTopics(newList));
     } catch (e) {
       debugPrint('[TopicList] 刷新话题 $topicId 失败: $e');
     }

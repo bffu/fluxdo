@@ -6,6 +6,7 @@ import 'sort_dropdown.dart';
 /// 排序选项定义
 const sortOptions = [
   (TopicListFilter.latest, '最新'),
+  (TopicListFilter.createdAt, '创建时间'),
   (TopicListFilter.newTopics, '新'),
   (TopicListFilter.unread, '未读'),
   (TopicListFilter.top, '排行榜'),

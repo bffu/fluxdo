@@ -98,7 +98,7 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
 
       if (mounted) {
         setState(() {
-          _topics = result.items;
+          _topics = _sortTopics(result.items);
           _hasMore = result.hasMore;
           _page = 0;
           _isLoading = false;
@@ -133,7 +133,7 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
 
       if (mounted) {
         setState(() {
-          _topics = result.items;
+          _topics = _sortTopics(result.items);
           _hasMore = result.hasMore;
           _page = 0;
         });
@@ -170,7 +170,7 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
           if (result.items.length > _topics.length) {
             _page = nextPage;
           }
-          _topics = result.items;
+          _topics = _sortTopics(result.items);
           _isLoadingMore = false;
         });
       }
@@ -185,6 +185,22 @@ class _CategoryTopicsPageState extends ConsumerState<CategoryTopicsPage> {
     if (sort == _currentSort) return;
     setState(() => _currentSort = sort);
     _loadTopics();
+  }
+
+  List<Topic> _sortTopics(List<Topic> topics) {
+    if (_currentSort != TopicListFilter.createdAt) {
+      return topics;
+    }
+
+    final sorted = [...topics];
+    sorted.sort((a, b) {
+      final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+      final timeCompare = bTime.compareTo(aTime);
+      if (timeCompare != 0) return timeCompare;
+      return b.id.compareTo(a.id);
+    });
+    return sorted;
   }
 
   void _removeTag(String tag) {
