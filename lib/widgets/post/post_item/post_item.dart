@@ -413,7 +413,7 @@ class _PostItemState extends ConsumerState<PostItem> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  _isAcceptedAnswer ? '宸茶В鍐? : '寰呰В鍐?,
+                                  _isAcceptedAnswer ? 'Solved' : 'Pending',
                                   style: TextStyle(
                                     color: _isAcceptedAnswer ? Colors.green : theme.colorScheme.outline,
                                     fontSize: 22,
