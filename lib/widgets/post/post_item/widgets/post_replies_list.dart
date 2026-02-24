@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+
 import '../../../../models/topic.dart';
 import '../../../../services/discourse_cache_manager.dart';
+import '../../../../utils/comment_keyword_filter.dart';
 import '../../../content/discourse_html_content/discourse_html_content.dart';
 
-/// 回复列表组件
 class PostRepliesList extends StatelessWidget {
   final List<Post> replies;
   final int replyCount;
+  final List<String> blockedKeywords;
   final bool canLoadMore;
   final ValueNotifier<bool> isLoadingRepliesNotifier;
   final ValueNotifier<bool> showRepliesNotifier;
@@ -17,6 +19,7 @@ class PostRepliesList extends StatelessWidget {
     super.key,
     required this.replies,
     required this.replyCount,
+    this.blockedKeywords = const [],
     required this.canLoadMore,
     required this.isLoadingRepliesNotifier,
     required this.showRepliesNotifier,
@@ -28,16 +31,18 @@ class PostRepliesList extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (replies.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (replies.isEmpty) return const SizedBox.shrink();
+
+    final visibleReplies = replies
+        .where((reply) => !CommentKeywordFilter.isPostBlocked(reply, blockedKeywords))
+        .toList();
+    final blockedCount = replies.length - visibleReplies.length;
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 顶部小标题
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Row(
@@ -52,7 +57,9 @@ class PostRepliesList extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '$replyCount 条回复',
+                  blockedCount > 0
+                      ? '$replyCount replies (hidden $blockedCount)'
+                      : '$replyCount replies',
                   style: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -60,16 +67,34 @@ class PostRepliesList extends StatelessWidget {
               ],
             ),
           ),
-
-          // 已加载的回复列表
-          ...replies.map((reply) {
+          if (visibleReplies.isEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Text(
+                'All loaded replies are hidden by keyword filter',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ...visibleReplies.map((reply) {
             final avatarUrl = reply.getAvatarUrl(size: 60);
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainer.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                ),
               ),
               child: Material(
                 color: Colors.transparent,
@@ -88,7 +113,10 @@ class PostRepliesList extends StatelessWidget {
                               ? discourseImageProvider(avatarUrl)
                               : null,
                           child: avatarUrl.isEmpty
-                              ? Text(reply.username[0].toUpperCase(), style: const TextStyle(fontSize: 10))
+                              ? Text(
+                                  reply.username[0].toUpperCase(),
+                                  style: const TextStyle(fontSize: 10),
+                                )
                               : null,
                         ),
                         const SizedBox(width: 10),
@@ -100,8 +128,12 @@ class PostRepliesList extends StatelessWidget {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      (reply.name != null && reply.name!.isNotEmpty) ? reply.name! : reply.username,
-                                      style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold),
+                                      (reply.name != null && reply.name!.isNotEmpty)
+                                          ? reply.name!
+                                          : reply.username,
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -117,7 +149,10 @@ class PostRepliesList extends StatelessWidget {
                               IgnorePointer(
                                 child: DiscourseHtmlContent(
                                   html: reply.cooked,
-                                  textStyle: theme.textTheme.bodySmall?.copyWith(fontSize: 13, height: 1.4),
+                                  textStyle: theme.textTheme.bodySmall?.copyWith(
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
                                   compact: true,
                                 ),
                               ),
@@ -131,8 +166,6 @@ class PostRepliesList extends StatelessWidget {
               ),
             );
           }),
-
-          // 底部操作栏
           ValueListenableBuilder<bool>(
             valueListenable: isLoadingRepliesNotifier,
             builder: (context, isLoadingReplies, _) {
@@ -143,20 +176,29 @@ class PostRepliesList extends StatelessWidget {
                     TextButton.icon(
                       onPressed: isLoadingReplies ? null : onLoadMore,
                       icon: isLoadingReplies
-                          ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.refresh, size: 16),
-                      label: const Text('加载更多回复'),
+                      label: const Text('Load more replies'),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                       ),
                     ),
                   const SizedBox(width: 8),
                   TextButton.icon(
-                    onPressed: () {
-                      showRepliesNotifier.value = false;
-                    },
-                    icon: Icon(Icons.expand_less, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                    label: Text('收起回复', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                    onPressed: () => showRepliesNotifier.value = false,
+                    icon: Icon(
+                      Icons.expand_less,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    label: Text(
+                      'Collapse replies',
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                    ),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                     ),

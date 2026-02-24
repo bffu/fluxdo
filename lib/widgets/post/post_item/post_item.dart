@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -8,6 +8,7 @@ import '../../../pages/topic_detail_page/topic_detail_page.dart';
 import '../../../providers/discourse_providers.dart';
 import '../../../providers/preferences_provider.dart';
 import '../../../services/discourse/discourse_service.dart';
+import '../../../utils/comment_keyword_filter.dart';
 import '../../../utils/time_utils.dart';
 import '../../content/discourse_html_content/chunked/chunked_html_content.dart';
 import '../small_action_item.dart';
@@ -41,6 +42,8 @@ class PostItem extends ConsumerStatefulWidget {
   final bool isTopicOwner;
   final bool topicHasAcceptedAnswer;
   final int? acceptedAnswerPostNumber;
+  final bool threadedMode;
+  final List<String> blockedKeywords;
 
   const PostItem({
     super.key,
@@ -57,6 +60,8 @@ class PostItem extends ConsumerStatefulWidget {
     this.isTopicOwner = false,
     this.topicHasAcceptedAnswer = false,
     this.acceptedAnswerPostNumber,
+    this.threadedMode = false,
+    this.blockedKeywords = const [],
   });
 
   @override
@@ -67,38 +72,39 @@ class _PostItemState extends ConsumerState<PostItem> {
   final DiscourseService _service = DiscourseService();
   final GlobalKey _likeButtonKey = GlobalKey();
 
-  // 点赞状态
+  // 鐐硅禐鐘舵€?
   bool _isLiking = false;
 
-  // 书签状态
+  // 涔︾鐘舵€?
   bool _isBookmarked = false;
   int? _bookmarkId;
   bool _isBookmarking = false;
 
-  // 回应状态
+  // 鍥炲簲鐘舵€?
   late List<PostReaction> _reactions;
   PostReaction? _currentUserReaction;
 
-  // 回复历史（被回复的帖子链）
+  // 鍥炲鍘嗗彶锛堣鍥炲鐨勫笘瀛愰摼锛?
   List<Post>? _replyHistory;
   final ValueNotifier<bool> _isLoadingReplyHistoryNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _showReplyHistoryNotifier = ValueNotifier<bool>(false);
 
-  // 回复列表（回复当前帖子的帖子）
+  // 鍥炲鍒楄〃锛堝洖澶嶅綋鍓嶅笘瀛愮殑甯栧瓙锛?
   final List<Post> _replies = [];
   final ValueNotifier<bool> _isLoadingRepliesNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _showRepliesNotifier = ValueNotifier<bool>(false);
 
-  // 缓存的头像 widget
+  // 缂撳瓨鐨勫ご鍍?widget
   Widget? _cachedAvatarWidget;
   int? _cachedPostId;
 
-  // 解决方案状态
+  // 瑙ｅ喅鏂规鐘舵€?
   bool _isAcceptedAnswer = false;
   bool _isTogglingAnswer = false;
 
-  // 删除状态
+  // 鍒犻櫎鐘舵€?
   bool _isDeleting = false;
+  bool _showBlockedContent = false;
 
   bool get _canLoadMoreReplies => _replies.length < widget.post.replyCount;
 
@@ -131,9 +137,10 @@ class _PostItemState extends ConsumerState<PostItem> {
     if (oldWidget.post.id != widget.post.id) {
       _initLikeState();
       _initAvatarWidget();
+      _showBlockedContent = false;
     } else {
-      // 同一帖子但数据更新了（例如通过 MessageBus 刷新）
-      // 只在本地没有进行中的操作时同步回应状态
+      // 鍚屼竴甯栧瓙浣嗘暟鎹洿鏂颁簡锛堜緥濡傞€氳繃 MessageBus 鍒锋柊锛?
+      // 鍙湪鏈湴娌℃湁杩涜涓殑鎿嶄綔鏃跺悓姝ュ洖搴旂姸鎬?
       if (!_isLiking) {
         _reactions = List.from(widget.post.reactions ?? []);
         _currentUserReaction = widget.post.currentUserReaction;
@@ -162,7 +169,7 @@ class _PostItemState extends ConsumerState<PostItem> {
     _cachedPostId = widget.post.id;
   }
 
-  /// 切换回复历史显示
+  /// 鍒囨崲鍥炲鍘嗗彶鏄剧ず
   Future<void> _toggleReplyHistory() async {
     if (_showReplyHistoryNotifier.value) {
       _showReplyHistoryNotifier.value = false;
@@ -191,7 +198,7 @@ class _PostItemState extends ConsumerState<PostItem> {
     }
   }
 
-  /// 加载回复列表
+  /// 鍔犺浇鍥炲鍒楄〃
   Future<void> _loadReplies() async {
     if (_isLoadingRepliesNotifier.value) return;
 
@@ -210,7 +217,7 @@ class _PostItemState extends ConsumerState<PostItem> {
     }
   }
 
-  /// 切换回复列表显示
+  /// 鍒囨崲鍥炲鍒楄〃鏄剧ず
   Future<void> _toggleReplies() async {
     if (_showRepliesNotifier.value) {
       _showRepliesNotifier.value = false;
@@ -268,12 +275,75 @@ class _PostItemState extends ConsumerState<PostItem> {
     );
   }
 
+  Widget _buildBlockedPlaceholder(ThemeData theme, String? matchedKeyword) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.block_outlined,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'This comment is hidden by keyword filter',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (matchedKeyword != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Matched keyword: $matchedKeyword',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => setState(() => _showBlockedContent = true),
+            icon: const Icon(Icons.visibility_outlined, size: 16),
+            label: const Text('Show original comment'),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
     final theme = Theme.of(context);
+    final preferences = ref.watch(preferencesProvider);
+    final blockedKeywords = CommentKeywordFilter.normalizeKeywords(widget.blockedKeywords);
+    final matchedBlockedKeyword = CommentKeywordFilter.firstMatchedKeyword(post, blockedKeywords);
+    final isBlockedByKeyword = matchedBlockedKeyword != null;
+    final showBlockedPlaceholder = isBlockedByKeyword && !_showBlockedContent;
 
-    // 根据帖子类型分发到不同组件
+    // 鏍规嵁甯栧瓙绫诲瀷鍒嗗彂鍒颁笉鍚岀粍浠?
     if (post.postType == PostTypes.smallAction) {
       return SmallActionItem(post: post);
     }
@@ -317,7 +387,7 @@ class _PostItemState extends ConsumerState<PostItem> {
           child: Stack(
             clipBehavior: Clip.hardEdge,
             children: [
-              // 背景水印印章
+              // 鑳屾櫙姘村嵃鍗扮珷
               if (_isAcceptedAnswer || widget.post.canAcceptAnswer)
                 Positioned(
                   right: 20,
@@ -343,7 +413,7 @@ class _PostItemState extends ConsumerState<PostItem> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  _isAcceptedAnswer ? '已解决' : '待解决',
+                                  _isAcceptedAnswer ? '宸茶В鍐? : '寰呰В鍐?,
                                   style: TextStyle(
                                     color: _isAcceptedAnswer ? Colors.green : theme.colorScheme.outline,
                                     fontSize: 22,
@@ -434,7 +504,7 @@ class _PostItemState extends ConsumerState<PostItem> {
             ),
           ),
 
-          // 被回复帖子预览（回复历史）
+          // 琚洖澶嶅笘瀛愰瑙堬紙鍥炲鍘嗗彶锛?
           ValueListenableBuilder<bool>(
             valueListenable: _showReplyHistoryNotifier,
             builder: (context, showReplyHistory, _) {
@@ -447,42 +517,48 @@ class _PostItemState extends ConsumerState<PostItem> {
             },
           ),
 
-          const SizedBox(height: 12),
+                    const SizedBox(height: 12),
 
-                    // Content (HTML)
-                    ChunkedHtmlContent(
-                      html: post.cooked,
-                      textStyle: theme.textTheme.bodyMedium?.copyWith(
-                        height: 1.5,
-                        fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) *
-                            ref.watch(preferencesProvider).contentFontScale,
-                      ),
-                      linkCounts: post.linkCounts,
-                      mentionedUsers: post.mentionedUsers,
-                      post: post,
-                      topicId: widget.topicId,
-                      onInternalLinkTap: (topicId, topicSlug, postNumber) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => TopicDetailPage(
-                              topicId: topicId,
-                              initialTitle: topicSlug,
-                              scrollToPostNumber: postNumber,
+                    if (showBlockedPlaceholder)
+                      _buildBlockedPlaceholder(theme, matchedBlockedKeyword)
+                    else ...[
+                      // Content (HTML)
+                      ChunkedHtmlContent(
+                        html: post.cooked,
+                        textStyle: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.5,
+                          fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) *
+                              preferences.contentFontScale,
+                        ),
+                        linkCounts: post.linkCounts,
+                        mentionedUsers: post.mentionedUsers,
+                        post: post,
+                        topicId: widget.topicId,
+                        onInternalLinkTap: (topicId, topicSlug, postNumber) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => TopicDetailPage(
+                                topicId: topicId,
+                                initialTitle: topicSlug,
+                                scrollToPostNumber: postNumber,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    // 相关链接
-                    PostLinks(linkCounts: post.linkCounts),
-
-                    // 主贴显示解决方案跳转提示
-                    if (post.postNumber == 1 && widget.topicHasAcceptedAnswer && widget.acceptedAnswerPostNumber != null)
-                      PostSolutionBanner(
-                        acceptedAnswerPostNumber: widget.acceptedAnswerPostNumber,
-                        onJumpToPost: widget.onJumpToPost,
+                          );
+                        },
                       ),
+
+                      // 相关链接
+                      PostLinks(linkCounts: post.linkCounts),
+
+                      // 主贴显示解决方案跳转提示
+                      if (post.postNumber == 1 &&
+                          widget.topicHasAcceptedAnswer &&
+                          widget.acceptedAnswerPostNumber != null)
+                        PostSolutionBanner(
+                          acceptedAnswerPostNumber: widget.acceptedAnswerPostNumber,
+                          onJumpToPost: widget.onJumpToPost,
+                        ),
+                    ],
 
                     const SizedBox(height: 12),
 
@@ -503,16 +579,18 @@ class _PostItemState extends ConsumerState<PostItem> {
                       onReply: widget.onReply,
                       onShowMoreMenu: () => _showMoreMenu(context, theme),
                       onToggleReplies: _toggleReplies,
+                      showRepliesToggle: !widget.threadedMode,
                     ),
 
-                    // 回复列表
+                    // 鍥炲鍒楄〃
                     ValueListenableBuilder<bool>(
                       valueListenable: _showRepliesNotifier,
                       builder: (context, showReplies, _) {
-                        if (!showReplies) return const SizedBox.shrink();
+                        if (!showReplies || widget.threadedMode) return const SizedBox.shrink();
                         return PostRepliesList(
                           replies: _replies,
                           replyCount: widget.post.replyCount,
+                          blockedKeywords: widget.blockedKeywords,
                           canLoadMore: _canLoadMoreReplies,
                           isLoadingRepliesNotifier: _isLoadingRepliesNotifier,
                           showRepliesNotifier: _showRepliesNotifier,
@@ -531,3 +609,4 @@ class _PostItemState extends ConsumerState<PostItem> {
     );
   }
 }
+

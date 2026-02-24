@@ -856,6 +856,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     final posts = detail.postStream.posts;
     final hasFirstPost = posts.isNotEmpty && posts.first.postNumber == 1;
     final sessionState = ref.watch(topicSessionProvider(widget.topicId));
+    final preferences = ref.watch(preferencesProvider);
   
      if (posts.isNotEmpty) {
       final readPostNumbers = <int>{};
@@ -914,6 +915,8 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
               centerKey: _centerKey,
               headerKey: _headerKey,
               highlightPostNumber: highlightPostNumber,
+              threadedMode: preferences.threadedCommentMode,
+              blockedCommentKeywords: preferences.blockedCommentKeywords,
               typingUsers: typingUsers,
               isLoggedIn: isLoggedIn,
               hasMoreBefore: notifier.hasMoreBefore,

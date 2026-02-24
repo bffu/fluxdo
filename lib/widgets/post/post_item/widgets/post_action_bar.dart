@@ -28,6 +28,7 @@ class PostActionBar extends StatelessWidget {
   final VoidCallback? onReply;
   final VoidCallback onShowMoreMenu;
   final VoidCallback onToggleReplies;
+  final bool showRepliesToggle;
 
   const PostActionBar({
     super.key,
@@ -46,6 +47,7 @@ class PostActionBar extends StatelessWidget {
     this.onReply,
     required this.onShowMoreMenu,
     required this.onToggleReplies,
+    this.showRepliesToggle = true,
   });
 
   @override
@@ -55,7 +57,7 @@ class PostActionBar extends StatelessWidget {
     return Row(
       children: [
         // 回复数按钮
-        if (post.replyCount > 0)
+        if (showRepliesToggle && post.replyCount > 0)
           ValueListenableBuilder<bool>(
             valueListenable: isLoadingRepliesNotifier,
             builder: (context, isLoadingReplies, _) {

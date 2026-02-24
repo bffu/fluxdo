@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
+
 import '../../../models/topic.dart';
 import '../../../providers/message_bus_providers.dart';
 import '../../../utils/responsive.dart';
@@ -8,19 +9,14 @@ import '../../../widgets/post/post_item_skeleton.dart';
 import 'topic_detail_header.dart';
 import 'typing_indicator.dart';
 
-/// 话题帖子列表
-/// 负责构建 CustomScrollView 及其 Slivers
-///
-/// 每个帖子独立生成一个 SliverToBoxAdapter，实现帖子级虚拟化：
-/// Flutter 只构建视口附近的帖子，远离视口的帖子不会被构建。
-/// 长帖子内部的 HTML 分块由 ChunkedHtmlContent 的 Column + SelectionArea 处理，
-/// 保留跨块文本选择能力。
 class TopicPostList extends StatefulWidget {
   final TopicDetail detail;
   final AutoScrollController scrollController;
   final GlobalKey centerKey;
   final GlobalKey headerKey;
   final int? highlightPostNumber;
+  final bool threadedMode;
+  final List<String> blockedCommentKeywords;
   final List<TypingUser> typingUsers;
   final bool isLoggedIn;
   final bool hasMoreBefore;
@@ -48,6 +44,8 @@ class TopicPostList extends StatefulWidget {
     required this.centerKey,
     required this.headerKey,
     required this.highlightPostNumber,
+    required this.threadedMode,
+    required this.blockedCommentKeywords,
     required this.typingUsers,
     required this.isLoggedIn,
     required this.hasMoreBefore,
@@ -77,12 +75,13 @@ class _TopicPostListState extends State<TopicPostList> {
   int? _lastReportedPostNumber;
   bool _isThrottled = false;
 
-  // 便捷 getter，简化 widget.xxx 访问
   TopicDetail get detail => widget.detail;
   AutoScrollController get scrollController => widget.scrollController;
   GlobalKey get centerKey => widget.centerKey;
   GlobalKey get headerKey => widget.headerKey;
   int? get highlightPostNumber => widget.highlightPostNumber;
+  bool get threadedMode => widget.threadedMode;
+  List<String> get blockedCommentKeywords => widget.blockedCommentKeywords;
   List<TypingUser> get typingUsers => widget.typingUsers;
   bool get isLoggedIn => widget.isLoggedIn;
   bool get hasMoreBefore => widget.hasMoreBefore;
@@ -102,100 +101,72 @@ class _TopicPostListState extends State<TopicPostList> {
   bool Function(ScrollNotification) get onScrollNotification => widget.onScrollNotification;
   void Function(Set<int> visiblePostNumbers)? get onVisiblePostsChanged => widget.onVisiblePostsChanged;
 
-  /// 检测第一个可见帖子（通过 AutoScrollController 的 tagMap）
   void _updateFirstVisiblePost() {
     final posts = detail.postStream.posts;
-    if (posts.isEmpty) return;
+    if (posts.isEmpty || !scrollController.hasClients) return;
 
-    // 使用 AutoScrollController 的 tagMap 来确定可见帖子
     final tagMap = scrollController.tagMap;
     if (tagMap.isEmpty) return;
 
-    // 获取视口高度
-    if (!scrollController.hasClients) return;
     final viewportHeight = scrollController.position.viewportDimension;
-
-    // 获取顶部栏高度（AppBar + 状态栏）
     final topBarHeight = kToolbarHeight + MediaQuery.of(context).padding.top;
 
-    // 找到第一个在视口顶部附近的帖子，同时收集所有可见帖子
     int? firstVisiblePostIndex;
     double bestOffset = double.infinity;
     final visiblePostNumbers = <int>{};
 
     for (final entry in tagMap.entries) {
       final postIndex = entry.key;
-      if (postIndex >= posts.length) continue;
+      if (postIndex < 0 || postIndex >= posts.length) continue;
 
-      final tagState = entry.value;
-      final ctx = tagState.context;
+      final ctx = entry.value.context;
       if (!ctx.mounted) continue;
 
       final renderBox = ctx.findRenderObject() as RenderBox?;
       if (renderBox == null || !renderBox.hasSize) continue;
 
-      // 获取帖子顶部相对于屏幕的位置
-      final globalPosition = renderBox.localToGlobal(Offset.zero);
-      final topY = globalPosition.dy;
-
-      // 相对于可见区域顶部的位置（减去顶部栏高度）
+      final topY = renderBox.localToGlobal(Offset.zero).dy;
       final relativeTopY = topY - topBarHeight;
 
-      // 帖子在可见区域内（考虑顶部栏遮挡）
       if (topY < viewportHeight && topY > topBarHeight - renderBox.size.height) {
-        // 添加到可见帖子集合
         visiblePostNumbers.add(posts[postIndex].postNumber);
 
-        // 找到最靠近可见区域顶部（或刚超过顶部）的帖子
         if (relativeTopY <= 0 && relativeTopY.abs() < bestOffset) {
           bestOffset = relativeTopY.abs();
           firstVisiblePostIndex = postIndex;
-        } else if (firstVisiblePostIndex == null && relativeTopY > 0) {
-          // 没有帖子超过顶部，取最靠近顶部的
-          if (relativeTopY < bestOffset) {
-            bestOffset = relativeTopY;
-            firstVisiblePostIndex = postIndex;
-          }
+        } else if (firstVisiblePostIndex == null && relativeTopY > 0 && relativeTopY < bestOffset) {
+          bestOffset = relativeTopY;
+          firstVisiblePostIndex = postIndex;
         }
       }
     }
 
-    // 通知可见帖子变化（用于 screenTrack）
     if (visiblePostNumbers.isNotEmpty) {
       onVisiblePostsChanged?.call(visiblePostNumbers);
     }
 
-    if (firstVisiblePostIndex != null) {
-      final postNumber = posts[firstVisiblePostIndex].postNumber;
-
-      // 防止重复报告相同的帖子
-      if (postNumber != _lastReportedPostNumber) {
-        _lastReportedPostNumber = postNumber;
-        widget.onFirstVisiblePostChanged(postNumber);
-      }
-    }
+    if (firstVisiblePostIndex == null) return;
+    final postNumber = posts[firstVisiblePostIndex].postNumber;
+    if (postNumber == _lastReportedPostNumber) return;
+    _lastReportedPostNumber = postNumber;
+    widget.onFirstVisiblePostChanged(postNumber);
   }
 
-  /// 处理滚动通知，同时更新可见帖子
   bool _handleScrollNotification(ScrollNotification notification) {
-    // 先调用原有的滚动通知处理
     final result = onScrollNotification(notification);
 
-    // 在滚动更新时检测可见帖子（节流 16ms）
     if (notification is ScrollUpdateNotification && !_isThrottled) {
       _isThrottled = true;
       Future.delayed(const Duration(milliseconds: 16), () {
-        if (mounted) {
-          _isThrottled = false;
-          _updateFirstVisiblePost();
-        }
+        if (!mounted) return;
+        _isThrottled = false;
+        _updateFirstVisiblePost();
       });
     }
 
     return result;
   }
 
-  /// 在大屏上为内容添加宽度约束
   Widget _wrapContent(BuildContext context, Widget child) {
     if (Responsive.isMobile(context)) return child;
     return Center(
@@ -206,34 +177,108 @@ class _TopicPostListState extends State<TopicPostList> {
     );
   }
 
+  List<_DisplayPostItem> _buildDisplayItems(List<Post> posts) {
+    if (!threadedMode || posts.length <= 1) {
+      return List.generate(
+        posts.length,
+        (index) => _DisplayPostItem(
+          post: posts[index],
+          rawIndex: index,
+          depth: 0,
+        ),
+      );
+    }
+
+    final postByNumber = <int, Post>{};
+    final rawIndexByPostNumber = <int, int>{};
+    for (int i = 0; i < posts.length; i++) {
+      postByNumber[posts[i].postNumber] = posts[i];
+      rawIndexByPostNumber[posts[i].postNumber] = i;
+    }
+
+    final rootPostNumbers = <int>[];
+    final childrenByParent = <int, List<int>>{};
+    for (final post in posts) {
+      final parentPostNumber = post.replyToPostNumber;
+      final hasParent =
+          parentPostNumber > 0 &&
+          parentPostNumber != post.postNumber &&
+          postByNumber.containsKey(parentPostNumber);
+      if (!hasParent) {
+        rootPostNumbers.add(post.postNumber);
+        continue;
+      }
+      childrenByParent.putIfAbsent(parentPostNumber, () => <int>[]).add(post.postNumber);
+    }
+
+    final visited = <int>{};
+    final displayItems = <_DisplayPostItem>[];
+
+    void visit(int postNumber, int depth) {
+      if (!visited.add(postNumber)) return;
+      final post = postByNumber[postNumber];
+      final rawIndex = rawIndexByPostNumber[postNumber];
+      if (post == null || rawIndex == null) return;
+      displayItems.add(_DisplayPostItem(
+        post: post,
+        rawIndex: rawIndex,
+        depth: depth,
+      ));
+      final children = childrenByParent[postNumber];
+      if (children == null || children.isEmpty) return;
+      for (final childPostNumber in children) {
+        visit(childPostNumber, depth + 1);
+      }
+    }
+
+    for (final rootPostNumber in rootPostNumbers) {
+      visit(rootPostNumber, 0);
+    }
+    for (final post in posts) {
+      if (!visited.contains(post.postNumber)) {
+        visit(post.postNumber, 0);
+      }
+    }
+
+    return displayItems;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final posts = detail.postStream.posts;
+    final displayItems = _buildDisplayItems(posts);
     final hasFirstPost = posts.isNotEmpty && posts.first.postNumber == 1;
-
     final loadMoreSkeletonCount = calculateSkeletonCount(
       MediaQuery.of(context).size.height * 0.4,
       minCount: 2,
     );
 
+    final displayCenterIndex = (() {
+      final index = displayItems.indexWhere((item) => item.rawIndex == centerPostIndex);
+      return index >= 0 ? index : 0;
+    })();
+
+    final displayDividerIndex = (() {
+      if (dividerPostIndex == null) return null;
+      final index = displayItems.indexWhere((item) => item.rawIndex == dividerPostIndex);
+      return index >= 0 ? index : null;
+    })();
+
     return NotificationListener<ScrollNotification>(
       onNotification: _handleScrollNotification,
       child: CustomScrollView(
-          controller: scrollController,
-          center: centerKey,
-          cacheExtent: 500,
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-          slivers: [
-          // 向上加载骨架屏
+        controller: scrollController,
+        center: centerKey,
+        cacheExtent: 500,
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        slivers: [
           if (hasMoreBefore && isLoadingPrevious)
             LoadingSkeletonSliver(
               itemCount: loadMoreSkeletonCount,
               wrapContent: _wrapContent,
             ),
-
-          // 话题 Header（centerPostIndex > 0 时放在 before-center 区域）
-          if (hasFirstPost && centerPostIndex > 0)
+          if (hasFirstPost && displayCenterIndex > 0)
             SliverToBoxAdapter(
               child: _wrapContent(
                 context,
@@ -245,19 +290,30 @@ class _TopicPostListState extends State<TopicPostList> {
                 ),
               ),
             ),
-
-          // Before-center 帖子（文档顺序，Viewport 自动反转渲染）
-          for (int i = 0; i < centerPostIndex; i++)
-            _buildPostSliver(context, theme, posts[i], i),
-
-          // 中心帖子（带 centerKey）
-          _buildCenterSliver(context, theme, posts, hasFirstPost),
-
-          // After-center 帖子
-          for (int i = centerPostIndex + 1; i < posts.length; i++)
-            _buildPostSliver(context, theme, posts[i], i),
-
-          // 正在输入指示器（始终占位，通过 AnimatedSize 平滑过渡避免列表抖动）
+          for (int i = 0; i < displayCenterIndex; i++)
+            _buildPostSliver(
+              context,
+              theme,
+              displayItems[i],
+              i,
+              displayDividerIndex: displayDividerIndex,
+            ),
+          _buildCenterSliver(
+            context,
+            theme,
+            displayItems,
+            displayCenterIndex,
+            hasFirstPost,
+            displayDividerIndex: displayDividerIndex,
+          ),
+          for (int i = displayCenterIndex + 1; i < displayItems.length; i++)
+            _buildPostSliver(
+              context,
+              theme,
+              displayItems[i],
+              i,
+              displayDividerIndex: displayDividerIndex,
+            ),
           if (!hasMoreAfter)
             SliverToBoxAdapter(
               child: _wrapContent(
@@ -269,8 +325,6 @@ class _TopicPostListState extends State<TopicPostList> {
                 ),
               ),
             ),
-
-          // 底部加载骨架屏
           if (hasMoreAfter && isLoadingMore)
             LoadingSkeletonSliver(
               itemCount: loadMoreSkeletonCount,
@@ -284,10 +338,22 @@ class _TopicPostListState extends State<TopicPostList> {
     );
   }
 
-  /// 构建中心帖子 Sliver
-  Widget _buildCenterSliver(BuildContext context, ThemeData theme, List<Post> posts, bool hasFirstPost) {
-    if (centerPostIndex == 0 && hasFirstPost) {
-      // 话题 Header 和第一个帖子组合为 center
+  Widget _buildCenterSliver(
+    BuildContext context,
+    ThemeData theme,
+    List<_DisplayPostItem> displayItems,
+    int displayCenterIndex,
+    bool hasFirstPost, {
+    required int? displayDividerIndex,
+  }) {
+    if (displayItems.isEmpty) {
+      return SliverToBoxAdapter(
+        key: centerKey,
+        child: const SizedBox.shrink(),
+      );
+    }
+
+    if (displayCenterIndex == 0 && hasFirstPost) {
       return SliverMainAxisGroup(
         key: centerKey,
         slivers: [
@@ -302,23 +368,38 @@ class _TopicPostListState extends State<TopicPostList> {
               ),
             ),
           ),
-          _buildPostSliver(context, theme, posts[0], 0),
+          _buildPostSliver(
+            context,
+            theme,
+            displayItems[0],
+            0,
+            displayDividerIndex: displayDividerIndex,
+          ),
         ],
       );
     }
+
     return _buildPostSliver(
-      context, theme, posts[centerPostIndex], centerPostIndex,
+      context,
+      theme,
+      displayItems[displayCenterIndex],
+      displayCenterIndex,
+      displayDividerIndex: displayDividerIndex,
       key: centerKey,
     );
   }
 
-  /// 构建单个帖子 Sliver
-  ///
-  /// 每个帖子独立一个 SliverToBoxAdapter，实现帖子级虚拟化。
-  /// 长帖子的 HTML 分块由 PostItem 内的 ChunkedHtmlContent 处理（Column + SelectionArea），
-  /// 保留跨块文本选择。
-  Widget _buildPostSliver(BuildContext context, ThemeData theme, Post post, int postIndex, {Key? key}) {
-    final showDivider = dividerPostIndex == postIndex;
+  Widget _buildPostSliver(
+    BuildContext context,
+    ThemeData theme,
+    _DisplayPostItem displayItem,
+    int displayIndex, {
+    required int? displayDividerIndex,
+    Key? key,
+  }) {
+    final post = displayItem.post;
+    final showDivider = displayDividerIndex == displayIndex;
+    final nestedIndent = (displayItem.depth * 14.0).clamp(0.0, 70.0);
 
     return SliverToBoxAdapter(
       key: key,
@@ -327,7 +408,7 @@ class _TopicPostListState extends State<TopicPostList> {
         AutoScrollTag(
           key: ValueKey('post-${post.postNumber}'),
           controller: scrollController,
-          index: postIndex,
+          index: displayItem.rawIndex,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -337,29 +418,46 @@ class _TopicPostListState extends State<TopicPostList> {
                   padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
                   color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
                   child: Text(
-                    '上次看到这里',
+                    'Last read here',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.primary,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
-              PostItem(
-                post: post,
-                topicId: detail.id,
-                highlight: highlightPostNumber == post.postNumber,
-                isTopicOwner: detail.createdBy?.username == post.username,
-                topicHasAcceptedAnswer: detail.hasAcceptedAnswer,
-                acceptedAnswerPostNumber: detail.acceptedAnswerPostNumber,
-                onLike: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('点赞功能开发中...')),
+              Padding(
+                padding: EdgeInsets.only(left: nestedIndent),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: displayItem.depth > 0
+                        ? Border(
+                            left: BorderSide(
+                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+                              width: 1,
+                            ),
+                          )
+                        : null,
+                  ),
+                  child: PostItem(
+                    post: post,
+                    topicId: detail.id,
+                    highlight: highlightPostNumber == post.postNumber,
+                    isTopicOwner: detail.createdBy?.username == post.username,
+                    topicHasAcceptedAnswer: detail.hasAcceptedAnswer,
+                    acceptedAnswerPostNumber: detail.acceptedAnswerPostNumber,
+                    threadedMode: threadedMode,
+                    blockedKeywords: blockedCommentKeywords,
+                    onLike: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Like action is not implemented yet')),
+                    ),
+                    onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
+                    onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
+                    onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
+                    onRefreshPost: onRefreshPost,
+                    onJumpToPost: onJumpToPost,
+                    onSolutionChanged: onSolutionChanged,
+                  ),
                 ),
-                onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
-                onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
-                onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
-                onRefreshPost: onRefreshPost,
-                onJumpToPost: onJumpToPost,
-                onSolutionChanged: onSolutionChanged,
               ),
             ],
           ),
@@ -368,3 +466,16 @@ class _TopicPostListState extends State<TopicPostList> {
     );
   }
 }
+
+class _DisplayPostItem {
+  final Post post;
+  final int rawIndex;
+  final int depth;
+
+  const _DisplayPostItem({
+    required this.post,
+    required this.rawIndex,
+    required this.depth,
+  });
+}
+
