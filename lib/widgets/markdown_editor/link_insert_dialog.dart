@@ -73,8 +73,8 @@ class _LinkInsertDialogState extends State<LinkInsertDialog> {
             TextFormField(
               controller: _urlController,
               decoration: const InputDecoration(
-                labelText: 'URL',
-                hintText: 'https://example.com',
+                labelText: '链接地址',
+                hintText: '例如：https://example.com',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.url,

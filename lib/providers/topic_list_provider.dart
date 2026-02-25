@@ -96,7 +96,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
           PaginationResult(items: preloadedData.topics, moreUrl: preloadedData.moreTopicsUrl),
         );
         _hasMore = result.hasMore;
-        return _sortTopics(result.items);
+        return _normalizeTopics(result.items);
       }
       if (preloadedService.hasInitialTopicList) {
         final asyncPreloaded = await preloadedService.getInitialTopicList();
@@ -105,7 +105,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
             PaginationResult(items: asyncPreloaded.topics, moreUrl: asyncPreloaded.moreTopicsUrl),
           );
           _hasMore = result.hasMore;
-          return _sortTopics(result.items);
+          return _normalizeTopics(result.items);
         }
       }
     }
@@ -118,7 +118,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
     );
     _hasMore = result.hasMore;
-    return _sortTopics(result.items);
+    return _normalizeTopics(result.items);
   }
 
   List<Topic> _sortTopics(List<Topic> topics) {
@@ -135,6 +135,21 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       return b.id.compareTo(a.id);
     });
     return sorted;
+  }
+
+  List<Topic> _dedupTopics(List<Topic> topics) {
+    final seen = <int>{};
+    final result = <Topic>[];
+    for (final topic in topics) {
+      if (seen.add(topic.id)) {
+        result.add(topic);
+      }
+    }
+    return result;
+  }
+
+  List<Topic> _normalizeTopics(List<Topic> topics) {
+    return _dedupTopics(_sortTopics(topics));
   }
 
   Future<TopicListResponse> _fetchTopics(
@@ -217,7 +232,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
       );
       _hasMore = result.hasMore;
-      return _sortTopics(result.items);
+      return _normalizeTopics(result.items);
     });
   }
 
@@ -233,7 +248,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         PaginationResult(items: response.topics, moreUrl: response.moreTopicsUrl),
       );
       _hasMore = result.hasMore;
-      state = AsyncValue.data(_sortTopics(result.items));
+      state = AsyncValue.data(_normalizeTopics(result.items));
     } catch (e) {
       debugPrint('Silent refresh failed: $e');
     }
@@ -264,7 +279,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
       if (result.items.length > currentTopics.length) {
         _page = nextPage;
       }
-      return _sortTopics(result.items);
+      return _normalizeTopics(result.items);
     });
   }
 
@@ -314,7 +329,7 @@ class TopicListNotifier extends AsyncNotifier<List<Topic>> {
         return t.id == topicId ? updatedTopic : t;
       }).toList();
 
-      state = AsyncValue.data(_sortTopics(newList));
+      state = AsyncValue.data(_normalizeTopics(newList));
     } catch (e) {
       debugPrint('[TopicList] 刷新话题 $topicId 失败: $e');
     }

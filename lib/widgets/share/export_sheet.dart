@@ -176,12 +176,12 @@ class _ExportSheetState extends State<ExportSheet> {
                 segments: const [
                   ButtonSegment(
                     value: ExportFormat.markdown,
-                    label: Text('MD'),
+                    label: Text('标记文本'),
                     icon: Icon(Icons.code),
                   ),
                   ButtonSegment(
                     value: ExportFormat.html,
-                    label: Text('HTML'),
+                    label: Text('网页文档'),
                     icon: Icon(Icons.html),
                   ),
                 ],

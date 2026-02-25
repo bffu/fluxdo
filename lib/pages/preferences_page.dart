@@ -13,16 +13,16 @@ class PreferencesPage extends ConsumerWidget {
     final preferences = ref.watch(preferencesProvider);
     final blockedKeywords = preferences.blockedCommentKeywords;
     final blockedKeywordsPreview =
-        blockedKeywords.isEmpty ? 'No keywords' : blockedKeywords.take(4).join(', ');
+        blockedKeywords.isEmpty ? '暂无关键词' : blockedKeywords.take(4).join(', ');
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Preferences'),
+        title: const Text('偏好设置'),
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          _buildSectionHeader(theme, 'General'),
+          _buildSectionHeader(theme, '通用'),
           const SizedBox(height: 12),
           Card(
             elevation: 0,
@@ -38,8 +38,8 @@ class PreferencesPage extends ConsumerWidget {
             child: Column(
               children: [
                 SwitchListTile(
-                  title: const Text('Long press preview'),
-                  subtitle: const Text('Long press topic cards to preview quickly'),
+                  title: const Text('长按预览'),
+                  subtitle: const Text('长按话题卡片可快速预览'),
                   secondary: Icon(
                     Icons.touch_app_rounded,
                     color: preferences.longPressPreview
@@ -57,8 +57,8 @@ class PreferencesPage extends ConsumerWidget {
                   color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                 ),
                 SwitchListTile(
-                  title: const Text('In-app browser for external links'),
-                  subtitle: const Text('Open external links inside the app first'),
+                  title: const Text('外链应用内打开'),
+                  subtitle: const Text('优先在应用内打开外部链接'),
                   secondary: Icon(
                     Icons.open_in_browser_rounded,
                     color: preferences.openExternalLinksInAppBrowser
@@ -78,8 +78,8 @@ class PreferencesPage extends ConsumerWidget {
                   color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                 ),
                 SwitchListTile(
-                  title: const Text('Anonymous share'),
-                  subtitle: const Text('Do not attach user identity to shared links'),
+                  title: const Text('匿名分享'),
+                  subtitle: const Text('分享链接时不附带用户身份'),
                   secondary: Icon(
                     Icons.visibility_off_rounded,
                     color: preferences.anonymousShare
@@ -95,7 +95,7 @@ class PreferencesPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          _buildSectionHeader(theme, 'Reading'),
+          _buildSectionHeader(theme, '阅读'),
           const SizedBox(height: 12),
           Card(
             elevation: 0,
@@ -124,7 +124,7 @@ class PreferencesPage extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Content font size'),
+                            const Text('正文字号'),
                             Text(
                               '${(preferences.contentFontScale * 100).round()}%',
                               style: theme.textTheme.bodySmall?.copyWith(
@@ -138,7 +138,7 @@ class PreferencesPage extends ConsumerWidget {
                         onPressed: preferences.contentFontScale != 1.0
                             ? () => ref.read(preferencesProvider.notifier).setContentFontScale(1.0)
                             : null,
-                        child: const Text('Reset'),
+                        child: const Text('重置'),
                       ),
                     ],
                   ),
@@ -163,14 +163,14 @@ class PreferencesPage extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Small',
+                        '小',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontSize: 11,
                         ),
                       ),
                       Text(
-                        'Large',
+                        '大',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontSize: 15,
@@ -183,7 +183,7 @@ class PreferencesPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          _buildSectionHeader(theme, 'Comments'),
+          _buildSectionHeader(theme, '评论'),
           const SizedBox(height: 12),
           Card(
             elevation: 0,
@@ -199,8 +199,8 @@ class PreferencesPage extends ConsumerWidget {
             child: Column(
               children: [
                 SwitchListTile(
-                  title: const Text('Threaded comment mode'),
-                  subtitle: const Text('Render comments by reply relationship'),
+                  title: const Text('楼中楼模式'),
+                  subtitle: const Text('按回复关系展示评论'),
                   secondary: Icon(
                     Icons.account_tree_outlined,
                     color: preferences.threadedCommentMode
@@ -224,10 +224,10 @@ class PreferencesPage extends ConsumerWidget {
                         ? theme.colorScheme.primary
                         : theme.colorScheme.onSurfaceVariant,
                   ),
-                  title: const Text('Comment keyword blocking'),
+                  title: const Text('评论关键词屏蔽'),
                   subtitle: Text(
                     blockedKeywords.isEmpty
-                        ? 'Tap to add keywords'
+                        ? '点击添加关键词'
                         : '$blockedKeywordsPreview${blockedKeywords.length > 4 ? '...' : ''} (${blockedKeywords.length})',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
@@ -237,7 +237,7 @@ class PreferencesPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          _buildSectionHeader(theme, 'Editor'),
+          _buildSectionHeader(theme, '编辑器'),
           const SizedBox(height: 12),
           Card(
             elevation: 0,
@@ -251,8 +251,8 @@ class PreferencesPage extends ConsumerWidget {
             margin: EdgeInsets.zero,
             clipBehavior: Clip.antiAlias,
             child: SwitchListTile(
-              title: const Text('Auto pangu spacing'),
-              subtitle: const Text('Auto insert spacing for CJK mixed text'),
+              title: const Text('中英文自动空格'),
+              subtitle: const Text('自动为中英文混排插入空格'),
               secondary: Icon(
                 Icons.auto_fix_high_rounded,
                 color: preferences.autoPanguSpacing
@@ -299,7 +299,7 @@ class PreferencesPage extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Comment keyword blocking'),
+        title: const Text('评论关键词屏蔽'),
         content: SizedBox(
           width: 420,
           child: Column(
@@ -307,7 +307,7 @@ class PreferencesPage extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Use one keyword per line, or split by comma/semicolon.',
+                '每行一个关键词，或使用逗号/分号分隔。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -319,7 +319,7 @@ class PreferencesPage extends ConsumerWidget {
                 minLines: 6,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  hintText: 'Example: spoiler\nad\nflame',
+                  hintText: '示例：剧透\n广告\n引战',
                 ),
               ),
             ],
@@ -331,11 +331,11 @@ class PreferencesPage extends ConsumerWidget {
               ref.read(preferencesProvider.notifier).setBlockedCommentKeywords(const []);
               Navigator.of(context).pop();
             },
-            child: const Text('Clear'),
+            child: const Text('清空'),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () {
@@ -343,7 +343,7 @@ class PreferencesPage extends ConsumerWidget {
               ref.read(preferencesProvider.notifier).setBlockedCommentKeywords(keywords);
               Navigator.of(context).pop();
             },
-            child: const Text('Save'),
+            child: const Text('保存'),
           ),
         ],
       ),

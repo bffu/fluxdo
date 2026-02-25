@@ -43,6 +43,7 @@ class PostItem extends ConsumerStatefulWidget {
   final bool topicHasAcceptedAnswer;
   final int? acceptedAnswerPostNumber;
   final bool threadedMode;
+  final int threadDepth;
   final List<String> blockedKeywords;
 
   const PostItem({
@@ -61,6 +62,7 @@ class PostItem extends ConsumerStatefulWidget {
     this.topicHasAcceptedAnswer = false,
     this.acceptedAnswerPostNumber,
     this.threadedMode = false,
+    this.threadDepth = 0,
     this.blockedKeywords = const [],
   });
 
@@ -104,7 +106,6 @@ class _PostItemState extends ConsumerState<PostItem> {
 
   // 鍒犻櫎鐘舵€?
   bool _isDeleting = false;
-  bool _showBlockedContent = false;
 
   bool get _canLoadMoreReplies => _replies.length < widget.post.replyCount;
 
@@ -135,9 +136,9 @@ class _PostItemState extends ConsumerState<PostItem> {
   void didUpdateWidget(PostItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.post.id != widget.post.id) {
+      _resetPostSpecificState();
       _initLikeState();
       _initAvatarWidget();
-      _showBlockedContent = false;
     } else {
       // 鍚屼竴甯栧瓙浣嗘暟鎹洿鏂颁簡锛堜緥濡傞€氳繃 MessageBus 鍒锋柊锛?
       // 鍙湪鏈湴娌℃湁杩涜涓殑鎿嶄綔鏃跺悓姝ュ洖搴旂姸鎬?
@@ -149,6 +150,20 @@ class _PostItemState extends ConsumerState<PostItem> {
       _bookmarkId = widget.post.bookmarkId;
       _isAcceptedAnswer = widget.post.acceptedAnswer;
     }
+  }
+
+  void _resetPostSpecificState() {
+    _isLiking = false;
+    _isBookmarking = false;
+    _isTogglingAnswer = false;
+    _isDeleting = false;
+
+    _replyHistory = null;
+    _replies.clear();
+    _isLoadingReplyHistoryNotifier.value = false;
+    _showReplyHistoryNotifier.value = false;
+    _isLoadingRepliesNotifier.value = false;
+    _showRepliesNotifier.value = false;
   }
 
   void _initLikeState() {
@@ -275,73 +290,11 @@ class _PostItemState extends ConsumerState<PostItem> {
     );
   }
 
-  Widget _buildBlockedPlaceholder(ThemeData theme, String? matchedKeyword) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.block_outlined,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'This comment is hidden by keyword filter',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (matchedKeyword != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Matched keyword: $matchedKeyword',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: () => setState(() => _showBlockedContent = true),
-            icon: const Icon(Icons.visibility_outlined, size: 16),
-            label: const Text('Show original comment'),
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              minimumSize: const Size(0, 32),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
     final theme = Theme.of(context);
     final preferences = ref.watch(preferencesProvider);
-    final blockedKeywords = CommentKeywordFilter.normalizeKeywords(widget.blockedKeywords);
-    final matchedBlockedKeyword = CommentKeywordFilter.firstMatchedKeyword(post, blockedKeywords);
-    final isBlockedByKeyword = matchedBlockedKeyword != null;
-    final showBlockedPlaceholder = isBlockedByKeyword && !_showBlockedContent;
 
     // 鏍规嵁甯栧瓙绫诲瀷鍒嗗彂鍒颁笉鍚岀粍浠?
     if (post.postType == PostTypes.smallAction) {
@@ -356,13 +309,21 @@ class _PostItemState extends ConsumerState<PostItem> {
       );
     }
 
+    // 关键词屏蔽：直接隐藏（不显示占位提示）
+    final blockedKeywords = CommentKeywordFilter.normalizeKeywords(widget.blockedKeywords);
+    if (CommentKeywordFilter.isPostBlocked(post, blockedKeywords)) {
+      return const SizedBox.shrink();
+    }
+
     final bool isWhisper = post.postType == PostTypes.whisper;
 
     final currentUser = ref.read(currentUserProvider).value;
     final isOwnPost = currentUser != null && currentUser.username == post.username;
     final isGuest = currentUser == null;
 
-    final backgroundColor = theme.colorScheme.surface;
+    final isThreadedChild = widget.threadedMode && widget.threadDepth > 0;
+    final backgroundColor =
+        isThreadedChild ? theme.colorScheme.surfaceContainerLow : theme.colorScheme.surface;
     final highlightColor = theme.colorScheme.tertiaryContainer.withValues(alpha: 0.5);
     final targetColor = widget.highlight
         ? Color.alphaBlend(highlightColor, backgroundColor)
@@ -371,18 +332,26 @@ class _PostItemState extends ConsumerState<PostItem> {
             : backgroundColor;
 
     return RepaintBoundary(
-        child: Opacity(
-          opacity: post.isDeleted ? 0.6 : 1.0,
-          child: Container(
+      child: Opacity(
+        opacity: post.isDeleted ? 0.6 : 1.0,
+        child: Container(
+          margin: isThreadedChild ? const EdgeInsets.only(top: 6, bottom: 6, right: 8) : null,
+          clipBehavior: isThreadedChild ? Clip.antiAlias : Clip.none,
           constraints: const BoxConstraints(minHeight: 80),
           decoration: BoxDecoration(
             color: targetColor,
-            border: Border(
-              bottom: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                width: 0.5,
-              ),
-            ),
+            borderRadius: isThreadedChild ? BorderRadius.circular(14) : null,
+            border: isThreadedChild
+                ? Border.all(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+                    width: 0.8,
+                  )
+                : Border(
+                    bottom: BorderSide(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                      width: 0.5,
+                    ),
+                  ),
           ),
           child: Stack(
             clipBehavior: Clip.hardEdge,
@@ -413,7 +382,7 @@ class _PostItemState extends ConsumerState<PostItem> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  _isAcceptedAnswer ? 'Solved' : 'Pending',
+                                  _isAcceptedAnswer ? '已解决' : '待解决',
                                   style: TextStyle(
                                     color: _isAcceptedAnswer ? Colors.green : theme.colorScheme.outline,
                                     fontSize: 22,
@@ -519,46 +488,42 @@ class _PostItemState extends ConsumerState<PostItem> {
 
                     const SizedBox(height: 12),
 
-                    if (showBlockedPlaceholder)
-                      _buildBlockedPlaceholder(theme, matchedBlockedKeyword)
-                    else ...[
-                      // Content (HTML)
-                      ChunkedHtmlContent(
-                        html: post.cooked,
-                        textStyle: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.5,
-                          fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) *
-                              preferences.contentFontScale,
-                        ),
-                        linkCounts: post.linkCounts,
-                        mentionedUsers: post.mentionedUsers,
-                        post: post,
-                        topicId: widget.topicId,
-                        onInternalLinkTap: (topicId, topicSlug, postNumber) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TopicDetailPage(
-                                topicId: topicId,
-                                initialTitle: topicSlug,
-                                scrollToPostNumber: postNumber,
-                              ),
-                            ),
-                          );
-                        },
+                    // Content (HTML)
+                    ChunkedHtmlContent(
+                      html: post.cooked,
+                      textStyle: theme.textTheme.bodyMedium?.copyWith(
+                        height: 1.5,
+                        fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) *
+                            preferences.contentFontScale,
                       ),
+                      linkCounts: post.linkCounts,
+                      mentionedUsers: post.mentionedUsers,
+                      post: post,
+                      topicId: widget.topicId,
+                      onInternalLinkTap: (topicId, topicSlug, postNumber) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TopicDetailPage(
+                              topicId: topicId,
+                              initialTitle: topicSlug,
+                              scrollToPostNumber: postNumber,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
 
-                      // 相关链接
-                      PostLinks(linkCounts: post.linkCounts),
+                    // 相关链接
+                    PostLinks(linkCounts: post.linkCounts),
 
-                      // 主贴显示解决方案跳转提示
-                      if (post.postNumber == 1 &&
-                          widget.topicHasAcceptedAnswer &&
-                          widget.acceptedAnswerPostNumber != null)
-                        PostSolutionBanner(
-                          acceptedAnswerPostNumber: widget.acceptedAnswerPostNumber,
-                          onJumpToPost: widget.onJumpToPost,
-                        ),
-                    ],
+                    // 主贴显示解决方案跳转提示
+                    if (post.postNumber == 1 &&
+                        widget.topicHasAcceptedAnswer &&
+                        widget.acceptedAnswerPostNumber != null)
+                      PostSolutionBanner(
+                        acceptedAnswerPostNumber: widget.acceptedAnswerPostNumber,
+                        onJumpToPost: widget.onJumpToPost,
+                      ),
 
                     const SizedBox(height: 12),
 

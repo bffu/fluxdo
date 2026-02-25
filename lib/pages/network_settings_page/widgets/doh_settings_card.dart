@@ -55,7 +55,7 @@ class _DohSettingsCardState extends State<DohSettingsCard> {
         children: [
           // DOH 开关
           SwitchListTile(
-            title: const Text('DNS over HTTPS'),
+            title: const Text('加密 DNS（DoH）'),
             subtitle: Text(
               settings.dohEnabled ? '已启用加密 DNS 解析' : '使用系统默认 DNS',
             ),
@@ -442,7 +442,7 @@ class _DohSettingsCardState extends State<DohSettingsCard> {
                 controller: urlController,
                 decoration: const InputDecoration(
                   labelText: 'DoH 地址',
-                  hintText: 'https://dns.example.com/dns-query',
+                  hintText: '例如：https://dns.example.com/dns-query',
                 ),
                 keyboardType: TextInputType.url,
               ),

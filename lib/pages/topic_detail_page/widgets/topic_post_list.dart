@@ -400,9 +400,12 @@ class _TopicPostListState extends State<TopicPostList> {
     final post = displayItem.post;
     final showDivider = displayDividerIndex == displayIndex;
     final nestedIndent = (displayItem.depth * 14.0).clamp(0.0, 70.0);
+    final sliverKey = key ?? ValueKey('post-sliver-${post.postNumber}');
+    final showThreadGuide = displayItem.depth > 0;
+    final guideColor = theme.colorScheme.outlineVariant.withValues(alpha: 0.45);
 
     return SliverToBoxAdapter(
-      key: key,
+      key: sliverKey,
       child: _wrapContent(
         context,
         AutoScrollTag(
@@ -418,7 +421,7 @@ class _TopicPostListState extends State<TopicPostList> {
                   padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
                   color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
                   child: Text(
-                    'Last read here',
+                    '上次读到这里',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.primary,
                       fontWeight: FontWeight.w500,
@@ -427,36 +430,57 @@ class _TopicPostListState extends State<TopicPostList> {
                 ),
               Padding(
                 padding: EdgeInsets.only(left: nestedIndent),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: displayItem.depth > 0
-                        ? Border(
-                            left: BorderSide(
-                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
-                              width: 1,
-                            ),
-                          )
-                        : null,
-                  ),
-                  child: PostItem(
-                    post: post,
-                    topicId: detail.id,
-                    highlight: highlightPostNumber == post.postNumber,
-                    isTopicOwner: detail.createdBy?.username == post.username,
-                    topicHasAcceptedAnswer: detail.hasAcceptedAnswer,
-                    acceptedAnswerPostNumber: detail.acceptedAnswerPostNumber,
-                    threadedMode: threadedMode,
-                    blockedKeywords: blockedCommentKeywords,
-                    onLike: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Like action is not implemented yet')),
+                child: Stack(
+                  children: [
+                    if (showThreadGuide)
+                      Positioned(
+                        left: 0,
+                        top: 14,
+                        bottom: 14,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: guideColor,
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                          child: const SizedBox(width: 2),
+                        ),
+                      ),
+                    if (showThreadGuide)
+                      Positioned(
+                        left: -1,
+                        top: 22,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: guideColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const SizedBox(width: 4, height: 4),
+                        ),
+                      ),
+                    Padding(
+                      padding: EdgeInsets.only(left: showThreadGuide ? 10 : 0),
+                      child: PostItem(
+                        post: post,
+                        topicId: detail.id,
+                        highlight: highlightPostNumber == post.postNumber,
+                        isTopicOwner: detail.createdBy?.username == post.username,
+                        topicHasAcceptedAnswer: detail.hasAcceptedAnswer,
+                        acceptedAnswerPostNumber: detail.acceptedAnswerPostNumber,
+                        threadedMode: threadedMode,
+                        threadDepth: displayItem.depth,
+                        blockedKeywords: blockedCommentKeywords,
+                        onLike: () => ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('点赞功能暂未实现')),
+                        ),
+                        onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
+                        onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
+                        onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
+                        onRefreshPost: onRefreshPost,
+                        onJumpToPost: onJumpToPost,
+                        onSolutionChanged: onSolutionChanged,
+                      ),
                     ),
-                    onReply: isLoggedIn ? () => onReply(post.postNumber == 1 ? null : post) : null,
-                    onEdit: isLoggedIn && post.canEdit ? () => onEdit(post) : null,
-                    onShareAsImage: onShareAsImage != null ? () => onShareAsImage!(post) : null,
-                    onRefreshPost: onRefreshPost,
-                    onJumpToPost: onJumpToPost,
-                    onSolutionChanged: onSolutionChanged,
-                  ),
+                  ],
                 ),
               ),
             ],

@@ -36,7 +36,6 @@ class PostRepliesList extends StatelessWidget {
     final visibleReplies = replies
         .where((reply) => !CommentKeywordFilter.isPostBlocked(reply, blockedKeywords))
         .toList();
-    final blockedCount = replies.length - visibleReplies.length;
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
@@ -57,9 +56,7 @@ class PostRepliesList extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  blockedCount > 0
-                      ? '$replyCount replies (hidden $blockedCount)'
-                      : '$replyCount replies',
+                  '$replyCount 条回复',
                   style: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -67,24 +64,6 @@ class PostRepliesList extends StatelessWidget {
               ],
             ),
           ),
-          if (visibleReplies.isEmpty)
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Text(
-                'All loaded replies are hidden by keyword filter',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
           ...visibleReplies.map((reply) {
             final avatarUrl = reply.getAvatarUrl(size: 60);
             return Container(
@@ -182,7 +161,7 @@ class PostRepliesList extends StatelessWidget {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.refresh, size: 16),
-                      label: const Text('Load more replies'),
+                      label: const Text('加载更多回复'),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                       ),
@@ -196,7 +175,7 @@ class PostRepliesList extends StatelessWidget {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                     label: Text(
-                      'Collapse replies',
+                      '收起回复',
                       style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                     ),
                     style: TextButton.styleFrom(

@@ -311,7 +311,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
           focusNode: _searchFocusNode,
           autofocus: true,
           decoration: InputDecoration(
-            hintText: '鍦ㄦ湰璇濋涓悳绱?..',
+            hintText: '在本话题中搜索...',
             border: InputBorder.none,
             hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
           ),
@@ -439,7 +439,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
       return [];
     }
 
-    // 缂栬緫璇濋鍏ュ彛锛氬彲浠ョ紪杈戣瘽棰樺厓鏁版嵁 鎴?鍙互缂栬緫棣栬创鍐呭
+    // 编辑话题入口：可编辑话题元数据，或编辑首帖内容
     final firstPost = detail.postStream.posts.where((p) => p.postNumber == 1).firstOrNull;
     final canEditTopic = detail.canEdit || (firstPost?.canEdit ?? false);
 
@@ -452,10 +452,10 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
           ref.read(topicSearchProvider(widget.topicId).notifier).enterSearchMode();
         },
       ),
-      // 鏇村閫夐」
+      // 更多选项
       PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
-        tooltip: '鏇村閫夐」',
+        tooltip: '更多选项',
         onSelected: (value) {
           if (value == 'subscribe') {
             showNotificationLevelSheet(
@@ -480,7 +480,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                   const SizedBox(width: 12),
-                  const Text('缂栬緫璇濋'),
+                  const Text('编辑话题'),
                 ],
               ),
             ),
@@ -495,7 +495,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
                 const SizedBox(width: 12),
-                const Text('璁㈤槄璁剧疆'),
+                const Text('订阅设置'),
               ],
             ),
           ),
@@ -641,7 +641,7 @@ class _TopicDetailPageState extends ConsumerState<TopicDetailPage> with WidgetsB
     final searchState = ref.watch(topicSearchProvider(widget.topicId));
     final isSearchMode = searchState.isSearchMode;
     final archiveNotice = notifier.usingArchivedFallback
-        ? (notifier.archiveNotice ?? '褰撳墠鏄剧ず鏈湴绂荤嚎褰掓。鐗堟湰')
+        ? (notifier.archiveNotice ?? '当前显示本地离线归档版本')
         : null;
 
     // 鍒濆鍔犺浇鎴栧垏鎹㈡ā寮忔椂鏄剧ず楠ㄦ灦灞?
